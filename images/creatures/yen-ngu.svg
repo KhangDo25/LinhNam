@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" fill="none">
+  <rect width="200" height="200" fill="#060D14"/>
+  <ellipse cx="100" cy="100" rx="40" ry="15" stroke="#4A7A9B" stroke-width="1" opacity="0.5"/>
+  <path d="M60 100 Q100 70 140 100" stroke="#4A7A9B" stroke-width="1" fill="none" opacity="0.4"/>
+  <text x="100" y="185" text-anchor="middle" fill="#4A7A9B" font-size="10" font-family="serif" opacity="0.5">Y�N NG�</text>
+</svg>

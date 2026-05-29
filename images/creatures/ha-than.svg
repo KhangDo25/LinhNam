@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" fill="none">
+  <rect width="200" height="200" fill="#FDFBF7"/>
+  <ellipse cx="100" cy="130" rx="30" ry="8" stroke="#C6A972" stroke-width="1" opacity="0.3"/>
+  <path d="M100 140 L100 80 M70 100 L130 100" stroke="#C6A972" stroke-width="1" opacity="0.5"/>
+  <text x="100" y="185" text-anchor="middle" fill="#C6A972" font-size="10" font-family="serif" opacity="0.5">H C TH¦N</text>
+</svg>
