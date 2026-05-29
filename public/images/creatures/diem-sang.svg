@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" fill="none">
+  <rect width="200" height="200" fill="#080808"/>
+  <circle cx="100" cy="100" r="8" fill="#800000" opacity="0.6"/>
+  <circle cx="100" cy="100" r="20" stroke="#800000" stroke-width="1" opacity="0.2"/>
+  <text x="100" y="185" text-anchor="middle" fill="#800000" font-size="9" font-family="serif" opacity="0.5">I�M S�NG</text>
+</svg>

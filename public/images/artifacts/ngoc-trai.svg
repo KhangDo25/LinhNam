@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" fill="none">
+  <rect width="200" height="200" fill="#060D14"/>
+  <circle cx="100" cy="100" r="35" fill="#4A7A9B" opacity="0.2" stroke="#4A7A9B" stroke-width="1"/>
+  <text x="100" y="185" text-anchor="middle" fill="#4A7A9B" font-size="9" font-family="serif" opacity="0.5">NGÌC TRAI</text>
+</svg>
