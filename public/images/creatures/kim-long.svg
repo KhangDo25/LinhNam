@@ -1,6 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" fill="none">
-  <rect width="200" height="200" fill="#0B0B0F"/>
-  <circle cx="100" cy="100" r="60" stroke="#C6A972" stroke-width="1" opacity="0.4"/>
-  <path d="M40 120 Q100 40 160 120" stroke="#C6A972" stroke-width="1.5" fill="none" opacity="0.6"/>
-  <text x="100" y="185" text-anchor="middle" fill="#C6A972" font-size="10" font-family="serif" opacity="0.5">KIM LONG</text>
-</svg>

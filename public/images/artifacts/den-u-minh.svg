@@ -1,6 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" fill="none">
-  <rect width="200" height="200" fill="#080808"/>
-  <ellipse cx="100" cy="80" rx="15" ry="25" fill="#800000" opacity="0.3"/>
-  <rect x="95" y="105" width="10" height="40" fill="#800000" opacity="0.4"/>
-  <text x="100" y="185" text-anchor="middle" fill="#800000" font-size="9" font-family="serif" opacity="0.5">ÈN U MINH</text>
-</svg>
