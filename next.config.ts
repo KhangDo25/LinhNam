@@ -1,9 +1,11 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  output: 'export', 
+  output: 'export',
+  trailingSlash: true,
+  basePath: '/LinhNam',
   images: {
-    unoptimized: true, 
+    unoptimized: true,
   },
 };
 
