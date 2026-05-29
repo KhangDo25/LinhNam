@@ -40,10 +40,6 @@ interface AuthContextValue {
 
 const AuthCtx = createContext<AuthContextValue | null>(null);
 
-async function parseJson<T>(res: Response): Promise<T> {
-  return res.json() as Promise<T>;
-}
-
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [balance, setBalance] = useState(150_000);
@@ -52,18 +48,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const refreshSession = useCallback(async () => {
     try {
-      const res = await fetch("/api/auth/me", { credentials: "include" });
-      const data = await parseJson<{
-        ok: boolean;
-        user: User | null;
-        balance: number;
-      }>(res);
-      if (data.ok && data.user) {
-        setUser(data.user);
-        setBalance(data.balance);
-      } else {
-        setUser(null);
+      const stored = localStorage.getItem("linh-nam-current-user");
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        
+        // Load fresh user data from "linh-nam-users" database in localStorage
+        const users = JSON.parse(localStorage.getItem("linh-nam-users") ?? "[]") as any[];
+        const dbUser = users.find((u) => u.id === parsed.id);
+        
+        if (dbUser) {
+          setUser({
+            id: dbUser.id,
+            email: dbUser.email,
+            name: dbUser.name,
+            createdAt: dbUser.createdAt,
+            emailVerified: dbUser.emailVerified,
+          });
+          setBalance(dbUser.balance);
+          localStorage.setItem("linh-nam-current-user", JSON.stringify(dbUser));
+          return;
+        }
       }
+      setUser(null);
     } catch {
       setUser(null);
     }
@@ -92,16 +98,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const register = useCallback(
     async (name: string, email: string, password: string): Promise<AuthResult> => {
-      const res = await fetch("/api/auth/register", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email, password }),
-      });
-      const data = await parseJson<AuthResult & { userId?: string }>(res);
-      if (data.ok && data.userId) {
-        localStorage.setItem(PENDING_VERIFY_KEY, data.userId);
+      // Simulate API latency
+      await new Promise((resolve) => setTimeout(resolve, 800));
+
+      const users = JSON.parse(localStorage.getItem("linh-nam-users") ?? "[]") as any[];
+      const trimmedEmail = email.trim().toLowerCase();
+
+      if (users.some((u) => u.email === trimmedEmail)) {
+        return { ok: false, error: "Email này đã được sử dụng." };
       }
-      return data;
+
+      const userId = "user_" + Math.random().toString(36).substring(2, 9);
+      const demoCode = String(Math.floor(100000 + Math.random() * 900000));
+
+      const newUser = {
+        id: userId,
+        email: trimmedEmail,
+        name: name.trim(),
+        password: password, // For client-side simulation, we match password directly
+        createdAt: new Date().toISOString(),
+        emailVerified: false,
+        verificationCode: demoCode,
+        balance: 150_000,
+      };
+
+      users.push(newUser);
+      localStorage.setItem("linh-nam-users", JSON.stringify(users));
+      localStorage.setItem(PENDING_VERIFY_KEY, userId);
+      
+      // Save code in sessionStorage so verification page can pre-display it for demo ease
+      sessionStorage.setItem("linh-nam-demo-otp", demoCode);
+
+      return { ok: true, userId, demoCode };
     },
     []
   );
@@ -111,27 +139,42 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const lockMsg = getLoginLockoutMessage();
       if (lockMsg) return { ok: false, error: lockMsg };
 
-      const res = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ email, password }),
-      });
-      const data = await parseJson<
-        AuthResult & { user?: User; balance?: number; userId?: string }
-      >(res);
+      // Simulate API latency
+      await new Promise((resolve) => setTimeout(resolve, 800));
 
-      if (!data.ok) {
-        if (!data.needsVerification) recordFailedLogin();
-        if (data.needsVerification && data.userId) {
-          localStorage.setItem(PENDING_VERIFY_KEY, data.userId);
-        }
-        return data;
+      const users = JSON.parse(localStorage.getItem("linh-nam-users") ?? "[]") as any[];
+      const trimmedEmail = email.trim().toLowerCase();
+      const userObj = users.find((u) => u.email === trimmedEmail);
+
+      if (!userObj || userObj.password !== password) {
+        recordFailedLogin();
+        return { ok: false, error: "Email hoặc mật khẩu không đúng." };
+      }
+
+      if (!userObj.emailVerified) {
+        // Expose code so they can verify if they register, log out, then log in again without verifying
+        sessionStorage.setItem("linh-nam-demo-otp", userObj.verificationCode);
+        return {
+          ok: false,
+          needsVerification: true,
+          userId: userObj.id,
+          error: "Tài khoản chưa xác thực email.",
+        };
       }
 
       clearLoginAttempts();
-      if (data.user) setUser(data.user);
-      if (typeof data.balance === "number") setBalance(data.balance);
+      
+      const sessionUser: User = {
+        id: userObj.id,
+        email: userObj.email,
+        name: userObj.name,
+        createdAt: userObj.createdAt,
+        emailVerified: userObj.emailVerified,
+      };
+
+      setUser(sessionUser);
+      setBalance(userObj.balance);
+      localStorage.setItem("linh-nam-current-user", JSON.stringify(userObj));
       return { ok: true };
     },
     []
@@ -139,34 +182,67 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const verifyEmail = useCallback(
     async (userId: string, code: string): Promise<AuthResult> => {
-      const res = await fetch("/api/auth/verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ userId, code }),
-      });
-      const data = await parseJson<AuthResult & { user?: User; balance?: number }>(res);
-      if (data.ok) {
-        if (data.user) setUser(data.user);
-        if (typeof data.balance === "number") setBalance(data.balance);
-        localStorage.removeItem(PENDING_VERIFY_KEY);
+      // Simulate API latency
+      await new Promise((resolve) => setTimeout(resolve, 600));
+
+      const users = JSON.parse(localStorage.getItem("linh-nam-users") ?? "[]") as any[];
+      const userIdx = users.findIndex((u) => u.id === userId);
+
+      if (userIdx === -1) {
+        return { ok: false, error: "Tài khoản không tồn tại." };
       }
-      return data;
+
+      const userObj = users[userIdx];
+      if (userObj.verificationCode !== code) {
+        return { ok: false, error: "Mã xác thực không chính xác." };
+      }
+
+      userObj.emailVerified = true;
+      users[userIdx] = userObj;
+      localStorage.setItem("linh-nam-users", JSON.stringify(users));
+
+      // Log the user in
+      const sessionUser: User = {
+        id: userObj.id,
+        email: userObj.email,
+        name: userObj.name,
+        createdAt: userObj.createdAt,
+        emailVerified: userObj.emailVerified,
+      };
+
+      setUser(sessionUser);
+      setBalance(userObj.balance);
+      localStorage.setItem("linh-nam-current-user", JSON.stringify(userObj));
+      localStorage.removeItem(PENDING_VERIFY_KEY);
+
+      return { ok: true };
     },
     []
   );
 
   const resendVerification = useCallback(async (userId: string): Promise<AuthResult> => {
-    const res = await fetch("/api/auth/resend-code", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId }),
-    });
-    return parseJson(res);
+    // Simulate API latency
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    const users = JSON.parse(localStorage.getItem("linh-nam-users") ?? "[]") as any[];
+    const userIdx = users.findIndex((u) => u.id === userId);
+
+    if (userIdx === -1) {
+      return { ok: false, error: "Tài khoản không tồn tại." };
+    }
+
+    const newCode = String(Math.floor(100000 + Math.random() * 900000));
+    users[userIdx].verificationCode = newCode;
+    localStorage.setItem("linh-nam-users", JSON.stringify(users));
+    sessionStorage.setItem("linh-nam-demo-otp", newCode);
+
+    return { ok: true, demoCode: newCode };
   }, []);
 
   const logout = useCallback(async () => {
-    await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
+    // Simulate API latency
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    localStorage.removeItem("linh-nam-current-user");
     setUser(null);
   }, []);
 
@@ -206,23 +282,45 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
       if (cart.length === 0) return { ok: false, error: "Giỏ hàng trống." };
 
-      const res = await fetch("/api/orders/checkout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ items: cart }),
-      });
-      const data = await parseJson<{
-        ok: boolean;
-        error?: string;
-        orderId?: string;
-        balance?: number;
-      }>(res);
+      // Simulate API latency
+      await new Promise((resolve) => setTimeout(resolve, 1000));
 
-      if (!data.ok) return { ok: false, error: data.error ?? "Thanh toán thất bại." };
-      if (typeof data.balance === "number") setBalance(data.balance);
+      const users = JSON.parse(localStorage.getItem("linh-nam-users") ?? "[]") as any[];
+      const userIdx = users.findIndex((u) => u.id === user.id);
+
+      if (userIdx === -1) {
+        return { ok: false, error: "Tài khoản không tồn tại." };
+      }
+
+      const userObj = users[userIdx];
+      if (userObj.balance < total) {
+        return { ok: false, error: "Số dư Linh Thạch không đủ." };
+      }
+
+      userObj.balance -= total;
+      users[userIdx] = userObj;
+
+      localStorage.setItem("linh-nam-users", JSON.stringify(users));
+      localStorage.setItem("linh-nam-current-user", JSON.stringify(userObj));
+
+      setBalance(userObj.balance);
       clearCart();
-      return { ok: true, orderId: data.orderId };
+
+      const orderId = "order_" + Math.random().toString(36).substring(2, 9).toUpperCase();
+
+      // Save order info locally
+      const orders = JSON.parse(localStorage.getItem("linh-nam-orders") ?? "[]");
+      orders.push({
+        id: orderId,
+        userId: user.id,
+        items: cart,
+        total,
+        status: "paid",
+        createdAt: new Date().toISOString(),
+      });
+      localStorage.setItem("linh-nam-orders", JSON.stringify(orders));
+
+      return { ok: true, orderId };
     },
     [user, cart, clearCart]
   );
@@ -258,3 +356,4 @@ export function getPendingVerifyUserId(): string | null {
   if (typeof window === "undefined") return null;
   return localStorage.getItem(PENDING_VERIFY_KEY);
 }
+
