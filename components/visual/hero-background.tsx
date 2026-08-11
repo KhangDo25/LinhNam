@@ -38,10 +38,8 @@ export default function HeroBackground() {
   return (
     <div className="absolute inset-0 overflow-hidden">
 
-      {/* Base Background */}
       <div className="absolute inset-0 bg-[#050507]" />
 
-      {/* Cinematic Radial Glow */}
       <motion.div
         animate={{
           opacity: [0.25, 0.45, 0.25],
@@ -91,11 +89,10 @@ export default function HeroBackground() {
           from-transparent
           via-[#ffffff05]
           to-transparent
-          blur-3xl
+          blur-3xln
         "
       />
 
-      {/* Fog Layer 2 */}
       <motion.div
         animate={{
           x: [0, -120, 0],
@@ -164,7 +161,6 @@ export default function HeroBackground() {
         />
       ))}
 
-      {/* Top Ambient Glow */}
       <div
         className="
           absolute
@@ -177,8 +173,6 @@ export default function HeroBackground() {
           blur-3xl
         "
       />
-
-      {/* Vignette */}
       <div
         className="
           absolute
