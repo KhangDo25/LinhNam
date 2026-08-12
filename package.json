@@ -6,8 +6,7 @@
   "dev": "next dev",
   "build": "next build",
   "start": "next start",
-  "lint": "next lint",
-  "deploy": "next build && echo. > out/.nojekyll && gh-pages -d out -b gh-pages -t"
+  "lint": "eslint ."
   },
   "dependencies": {
     "@studio-freight/lenis": "^1.0.42",

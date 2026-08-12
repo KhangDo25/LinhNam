@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { cn } from "@/lib/cn";
 
 interface Particle {
@@ -23,25 +23,26 @@ export default function Particles({
   className,
 }: ParticlesProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [enabled, setEnabled] = useState(false);
 
   useEffect(() => {
     const prefersReduced = window.matchMedia(
       "(prefers-reduced-motion: reduce)"
     ).matches;
-    const isMobile = window.innerWidth < 768;
-    setEnabled(!prefersReduced && !isMobile);
-  }, []);
 
-  useEffect(() => {
-    if (!enabled) return;
+    const isMobile = window.innerWidth < 768;
+
+    if (prefersReduced || isMobile) {
+      return;
+    }
+
     const canvas = canvasRef.current;
     if (!canvas) return;
 
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
-    let animationId: number;
+    let animationId = 0;
+
     const particles: Particle[] = Array.from({ length: count }, () => ({
       x: Math.random() * canvas.width,
       y: Math.random() * canvas.height,
@@ -56,21 +57,26 @@ export default function Particles({
     };
 
     resize();
+
     window.addEventListener("resize", resize);
 
     const animate = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+
       particles.forEach((p) => {
         p.y -= p.speed;
+
         if (p.y < 0) {
           p.y = canvas.height;
           p.x = Math.random() * canvas.width;
         }
+
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
         ctx.fillStyle = `rgba(${color}, ${p.opacity})`;
         ctx.fill();
       });
+
       animationId = requestAnimationFrame(animate);
     };
 
@@ -80,14 +86,15 @@ export default function Particles({
       cancelAnimationFrame(animationId);
       window.removeEventListener("resize", resize);
     };
-  }, [count, color, enabled]);
-
-  if (!enabled) return null;
+  }, [count, color]);
 
   return (
     <canvas
       ref={canvasRef}
-      className={cn("pointer-events-none absolute inset-0 z-[1]", className)}
+      className={cn(
+        "pointer-events-none absolute inset-0 z-[1]",
+        className
+      )}
       aria-hidden
     />
   );

@@ -6,30 +6,41 @@ import { usePerformance } from "./performance-provider";
 export default function CustomCursor() {
   const perf = usePerformance();
   const [hovering, setHovering] = useState(false);
-  const [enabled, setEnabled] = useState(false);
 
   useEffect(() => {
     if (!perf.customCursor) return;
 
-    setEnabled(true);
     document.body.classList.add("custom-cursor-active");
 
     const handleOver = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      const next = !!target.closest(
-        "a, button, [data-cursor-hover], .cursor-hover"
+      const target = e.target;
+
+      if (!(target instanceof HTMLElement)) {
+        return;
+      }
+
+      const next = Boolean(
+        target.closest(
+          "a, button, [data-cursor-hover], .cursor-hover"
+        )
       );
+
       setHovering((prev) => (prev === next ? prev : next));
     };
 
-    window.addEventListener("mouseover", handleOver, { passive: true });
+    window.addEventListener("mouseover", handleOver, {
+      passive: true,
+    });
+
     return () => {
       window.removeEventListener("mouseover", handleOver);
       document.body.classList.remove("custom-cursor-active");
     };
   }, [perf.customCursor]);
 
-  if (!enabled) return null;
+  if (!perf.customCursor) {
+    return null;
+  }
 
   return (
     <div
@@ -37,10 +48,19 @@ export default function CustomCursor() {
       style={{
         transform: "translate3d(var(--mouse-x), var(--mouse-y), 0)",
       }}
-      aria-hidden
+      aria-hidden="true"
     >
       <div
-        className="-translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-gold bg-gold/10 transition-[width,height,opacity] duration-200"
+        className="
+          -translate-x-1/2
+          -translate-y-1/2
+          rounded-full
+          border-2
+          border-gold
+          bg-gold/10
+          transition-[width,height,opacity]
+          duration-200
+        "
         style={{
           width: hovering ? 40 : 8,
           height: hovering ? 40 : 8,

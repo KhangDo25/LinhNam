@@ -17,8 +17,39 @@ import {
 
 const CART_KEY = "linh-nam-cart";
 const PENDING_VERIFY_KEY = "linh-nam-pending-verify";
+const USERS_KEY = "linh-nam-users";
+const CURRENT_USER_KEY = "linh-nam-current-user";
+const ORDERS_KEY = "linh-nam-orders";
+const DEMO_OTP_KEY = "linh-nam-demo-otp";
 
-type AuthResult = { ok: boolean; error?: string; needsVerification?: boolean; userId?: string; demoCode?: string };
+interface StoredUser extends User {
+  password: string;
+  verificationCode: string;
+  balance: number;
+}
+
+interface StoredOrder {
+  id: string;
+  userId: string;
+  items: CartItem[];
+  total: number;
+  status: "paid";
+  createdAt: string;
+}
+
+interface AuthResult {
+  ok: boolean;
+  error?: string;
+  needsVerification?: boolean;
+  userId?: string;
+  demoCode?: string;
+}
+
+interface CheckoutResult {
+  ok: boolean;
+  error?: string;
+  orderId?: string;
+}
 
 interface AuthContextValue {
   user: User | null;
@@ -26,7 +57,11 @@ interface AuthContextValue {
   cart: CartItem[];
   cartCount: number;
   loading: boolean;
-  register: (name: string, email: string, password: string) => Promise<AuthResult>;
+  register: (
+    name: string,
+    email: string,
+    password: string
+  ) => Promise<AuthResult>;
   login: (email: string, password: string) => Promise<AuthResult>;
   verifyEmail: (userId: string, code: string) => Promise<AuthResult>;
   resendVerification: (userId: string) => Promise<AuthResult>;
@@ -35,12 +70,62 @@ interface AuthContextValue {
   updateCartQty: (productId: string, quantity: number) => void;
   removeFromCart: (productId: string) => void;
   clearCart: () => void;
-  checkout: (total: number) => Promise<{ ok: boolean; error?: string; orderId?: string }>;
+  checkout: (total: number) => Promise<CheckoutResult>;
 }
 
 const AuthCtx = createContext<AuthContextValue | null>(null);
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
+function getStoredUsers(): StoredUser[] {
+  try {
+    const stored = localStorage.getItem(USERS_KEY);
+
+    if (!stored) {
+      return [];
+    }
+
+    const parsed: unknown = JSON.parse(stored);
+
+    return Array.isArray(parsed) ? (parsed as StoredUser[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveStoredUsers(users: StoredUser[]): void {
+  localStorage.setItem(USERS_KEY, JSON.stringify(users));
+}
+
+function getStoredOrders(): StoredOrder[] {
+  try {
+    const stored = localStorage.getItem(ORDERS_KEY);
+
+    if (!stored) {
+      return [];
+    }
+
+    const parsed: unknown = JSON.parse(stored);
+
+    return Array.isArray(parsed) ? (parsed as StoredOrder[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function createSessionUser(user: StoredUser): User {
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    createdAt: user.createdAt,
+    emailVerified: user.emailVerified,
+  };
+}
+
+export function AuthProvider({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const [user, setUser] = useState<User | null>(null);
   const [balance, setBalance] = useState(150_000);
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -48,28 +133,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const refreshSession = useCallback(async () => {
     try {
-      const stored = localStorage.getItem("linh-nam-current-user");
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        
-        // Load fresh user data from "linh-nam-users" database in localStorage
-        const users = JSON.parse(localStorage.getItem("linh-nam-users") ?? "[]") as any[];
-        const dbUser = users.find((u) => u.id === parsed.id);
-        
-        if (dbUser) {
-          setUser({
-            id: dbUser.id,
-            email: dbUser.email,
-            name: dbUser.name,
-            createdAt: dbUser.createdAt,
-            emailVerified: dbUser.emailVerified,
-          });
-          setBalance(dbUser.balance);
-          localStorage.setItem("linh-nam-current-user", JSON.stringify(dbUser));
-          return;
-        }
+      const stored = localStorage.getItem(CURRENT_USER_KEY);
+
+      if (!stored) {
+        setUser(null);
+        return;
       }
-      setUser(null);
+
+      const parsed: unknown = JSON.parse(stored);
+
+      if (!parsed || typeof parsed !== "object") {
+        setUser(null);
+        return;
+      }
+
+      const session = parsed as StoredUser;
+      const users = getStoredUsers();
+      const dbUser = users.find((storedUser) => storedUser.id === session.id);
+
+      if (!dbUser) {
+        setUser(null);
+        return;
+      }
+
+      setUser(createSessionUser(dbUser));
+      setBalance(dbUser.balance);
+
+      localStorage.setItem(
+        CURRENT_USER_KEY,
+        JSON.stringify(dbUser)
+      );
     } catch {
       setUser(null);
     }
@@ -78,44 +171,65 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     (async () => {
       await refreshSession();
+
       try {
-        setCart(JSON.parse(localStorage.getItem(CART_KEY) ?? "[]"));
+        const storedCart = localStorage.getItem(CART_KEY);
+
+        if (storedCart) {
+          const parsed: unknown = JSON.parse(storedCart);
+
+          if (Array.isArray(parsed)) {
+            setCart(parsed as CartItem[]);
+          }
+        }
       } catch {
-        /* ignore */
       }
+
       setLoading(false);
     })();
   }, [refreshSession]);
 
   useEffect(() => {
-    if (!loading) localStorage.setItem(CART_KEY, JSON.stringify(cart));
+    if (!loading) {
+      localStorage.setItem(CART_KEY, JSON.stringify(cart));
+    }
   }, [cart, loading]);
 
   const cartCount = useMemo(
-    () => cart.reduce((sum, i) => sum + i.quantity, 0),
+    () => cart.reduce((sum, item) => sum + item.quantity, 0),
     [cart]
   );
 
   const register = useCallback(
-    async (name: string, email: string, password: string): Promise<AuthResult> => {
-      // Simulate API latency
+    async (
+      name: string,
+      email: string,
+      password: string
+    ): Promise<AuthResult> => {
       await new Promise((resolve) => setTimeout(resolve, 800));
 
-      const users = JSON.parse(localStorage.getItem("linh-nam-users") ?? "[]") as any[];
+      const users = getStoredUsers();
       const trimmedEmail = email.trim().toLowerCase();
 
-      if (users.some((u) => u.email === trimmedEmail)) {
-        return { ok: false, error: "Email này đã được sử dụng." };
+      if (users.some((storedUser) => storedUser.email === trimmedEmail)) {
+        return {
+          ok: false,
+          error: "Email này đã được sử dụng.",
+        };
       }
 
-      const userId = "user_" + Math.random().toString(36).substring(2, 9);
-      const demoCode = String(Math.floor(100000 + Math.random() * 900000));
+      const userId =
+        "user_" + Math.random().toString(36).substring(2, 9);
 
-      const newUser = {
+      const demoCode = String(
+        Math.floor(100000 + Math.random() * 900000)
+      );
+
+      const newUser: StoredUser = {
         id: userId,
         email: trimmedEmail,
         name: name.trim(),
-        password: password, // For client-side simulation, we match password directly
+        password,
         createdAt: new Date().toISOString(),
         emailVerified: false,
         verificationCode: demoCode,
@@ -123,37 +237,59 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       };
 
       users.push(newUser);
-      localStorage.setItem("linh-nam-users", JSON.stringify(users));
-      localStorage.setItem(PENDING_VERIFY_KEY, userId);
-      
-      // Save code in sessionStorage so verification page can pre-display it for demo ease
-      sessionStorage.setItem("linh-nam-demo-otp", demoCode);
+      saveStoredUsers(users);
 
-      return { ok: true, userId, demoCode };
+      localStorage.setItem(PENDING_VERIFY_KEY, userId);
+
+      sessionStorage.setItem(DEMO_OTP_KEY, demoCode);
+
+      return {
+        ok: true,
+        userId,
+        demoCode,
+      };
     },
     []
   );
 
   const login = useCallback(
-    async (email: string, password: string): Promise<AuthResult> => {
+    async (
+      email: string,
+      password: string
+    ): Promise<AuthResult> => {
       const lockMsg = getLoginLockoutMessage();
-      if (lockMsg) return { ok: false, error: lockMsg };
 
-      // Simulate API latency
+      if (lockMsg) {
+        return {
+          ok: false,
+          error: lockMsg,
+        };
+      }
+
       await new Promise((resolve) => setTimeout(resolve, 800));
 
-      const users = JSON.parse(localStorage.getItem("linh-nam-users") ?? "[]") as any[];
+      const users = getStoredUsers();
       const trimmedEmail = email.trim().toLowerCase();
-      const userObj = users.find((u) => u.email === trimmedEmail);
+
+      const userObj = users.find(
+        (storedUser) => storedUser.email === trimmedEmail
+      );
 
       if (!userObj || userObj.password !== password) {
         recordFailedLogin();
-        return { ok: false, error: "Email hoặc mật khẩu không đúng." };
+
+        return {
+          ok: false,
+          error: "Email hoặc mật khẩu không đúng.",
+        };
       }
 
       if (!userObj.emailVerified) {
-        // Expose code so they can verify if they register, log out, then log in again without verifying
-        sessionStorage.setItem("linh-nam-demo-otp", userObj.verificationCode);
+        sessionStorage.setItem(
+          DEMO_OTP_KEY,
+          userObj.verificationCode
+        );
+
         return {
           ok: false,
           needsVerification: true,
@@ -163,164 +299,286 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       clearLoginAttempts();
-      
-      const sessionUser: User = {
-        id: userObj.id,
-        email: userObj.email,
-        name: userObj.name,
-        createdAt: userObj.createdAt,
-        emailVerified: userObj.emailVerified,
-      };
+
+      const sessionUser = createSessionUser(userObj);
 
       setUser(sessionUser);
       setBalance(userObj.balance);
-      localStorage.setItem("linh-nam-current-user", JSON.stringify(userObj));
-      return { ok: true };
+
+      localStorage.setItem(
+        CURRENT_USER_KEY,
+        JSON.stringify(userObj)
+      );
+
+      return {
+        ok: true,
+      };
     },
     []
   );
 
   const verifyEmail = useCallback(
-    async (userId: string, code: string): Promise<AuthResult> => {
-      // Simulate API latency
+    async (
+      userId: string,
+      code: string
+    ): Promise<AuthResult> => {
       await new Promise((resolve) => setTimeout(resolve, 600));
 
-      const users = JSON.parse(localStorage.getItem("linh-nam-users") ?? "[]") as any[];
-      const userIdx = users.findIndex((u) => u.id === userId);
+      const users = getStoredUsers();
+
+      const userIdx = users.findIndex(
+        (storedUser) => storedUser.id === userId
+      );
 
       if (userIdx === -1) {
-        return { ok: false, error: "Tài khoản không tồn tại." };
+        return {
+          ok: false,
+          error: "Tài khoản không tồn tại.",
+        };
       }
 
       const userObj = users[userIdx];
+
       if (userObj.verificationCode !== code) {
-        return { ok: false, error: "Mã xác thực không chính xác." };
+        return {
+          ok: false,
+          error: "Mã xác thực không chính xác.",
+        };
       }
 
-      userObj.emailVerified = true;
-      users[userIdx] = userObj;
-      localStorage.setItem("linh-nam-users", JSON.stringify(users));
-
-      // Log the user in
-      const sessionUser: User = {
-        id: userObj.id,
-        email: userObj.email,
-        name: userObj.name,
-        createdAt: userObj.createdAt,
-        emailVerified: userObj.emailVerified,
+      const verifiedUser: StoredUser = {
+        ...userObj,
+        emailVerified: true,
       };
 
+      users[userIdx] = verifiedUser;
+
+      saveStoredUsers(users);
+
+      const sessionUser = createSessionUser(verifiedUser);
+
       setUser(sessionUser);
-      setBalance(userObj.balance);
-      localStorage.setItem("linh-nam-current-user", JSON.stringify(userObj));
+      setBalance(verifiedUser.balance);
+
+      localStorage.setItem(
+        CURRENT_USER_KEY,
+        JSON.stringify(verifiedUser)
+      );
+
       localStorage.removeItem(PENDING_VERIFY_KEY);
 
-      return { ok: true };
+      return {
+        ok: true,
+      };
     },
     []
   );
 
-  const resendVerification = useCallback(async (userId: string): Promise<AuthResult> => {
-    // Simulate API latency
-    await new Promise((resolve) => setTimeout(resolve, 500));
+  const resendVerification = useCallback(
+    async (userId: string): Promise<AuthResult> => {
+      await new Promise((resolve) => setTimeout(resolve, 500));
 
-    const users = JSON.parse(localStorage.getItem("linh-nam-users") ?? "[]") as any[];
-    const userIdx = users.findIndex((u) => u.id === userId);
+      const users = getStoredUsers();
 
-    if (userIdx === -1) {
-      return { ok: false, error: "Tài khoản không tồn tại." };
-    }
+      const userIdx = users.findIndex(
+        (storedUser) => storedUser.id === userId
+      );
 
-    const newCode = String(Math.floor(100000 + Math.random() * 900000));
-    users[userIdx].verificationCode = newCode;
-    localStorage.setItem("linh-nam-users", JSON.stringify(users));
-    sessionStorage.setItem("linh-nam-demo-otp", newCode);
+      if (userIdx === -1) {
+        return {
+          ok: false,
+          error: "Tài khoản không tồn tại.",
+        };
+      }
 
-    return { ok: true, demoCode: newCode };
-  }, []);
+      const newCode = String(
+        Math.floor(100000 + Math.random() * 900000)
+      );
+
+      const updatedUser: StoredUser = {
+        ...users[userIdx],
+        verificationCode: newCode,
+      };
+
+      users[userIdx] = updatedUser;
+
+      saveStoredUsers(users);
+
+      sessionStorage.setItem(DEMO_OTP_KEY, newCode);
+
+      return {
+        ok: true,
+        demoCode: newCode,
+      };
+    },
+    []
+  );
 
   const logout = useCallback(async () => {
-    // Simulate API latency
     await new Promise((resolve) => setTimeout(resolve, 300));
-    localStorage.removeItem("linh-nam-current-user");
+
+    localStorage.removeItem(CURRENT_USER_KEY);
     setUser(null);
   }, []);
 
-  const addToCart = useCallback((productId: string, qty = 1) => {
-    setCart((prev) => {
-      const existing = prev.find((i) => i.productId === productId);
-      if (existing) {
-        return prev.map((i) =>
-          i.productId === productId ? { ...i, quantity: i.quantity + qty } : i
+  const addToCart = useCallback(
+    (productId: string, qty = 1) => {
+      setCart((prev) => {
+        const existing = prev.find(
+          (item) => item.productId === productId
         );
-      }
-      return [...prev, { productId, quantity: qty }];
-    });
-  }, []);
 
-  const updateCartQty = useCallback((productId: string, quantity: number) => {
-    if (quantity < 1) {
-      setCart((prev) => prev.filter((i) => i.productId !== productId));
-      return;
-    }
+        if (existing) {
+          return prev.map((item) =>
+            item.productId === productId
+              ? {
+                  ...item,
+                  quantity: item.quantity + qty,
+                }
+              : item
+          );
+        }
+
+        return [
+          ...prev,
+          {
+            productId,
+            quantity: qty,
+          },
+        ];
+      });
+    },
+    []
+  );
+
+  const updateCartQty = useCallback(
+    (productId: string, quantity: number) => {
+      if (quantity < 1) {
+        setCart((prev) =>
+          prev.filter((item) => item.productId !== productId)
+        );
+
+        return;
+      }
+
+      setCart((prev) =>
+        prev.map((item) =>
+          item.productId === productId
+            ? {
+                ...item,
+                quantity,
+              }
+            : item
+        )
+      );
+    },
+    []
+  );
+
+  const removeFromCart = useCallback((productId: string) => {
     setCart((prev) =>
-      prev.map((i) => (i.productId === productId ? { ...i, quantity } : i))
+      prev.filter((item) => item.productId !== productId)
     );
   }, []);
 
-  const removeFromCart = useCallback((productId: string) => {
-    setCart((prev) => prev.filter((i) => i.productId !== productId));
+  const clearCart = useCallback(() => {
+    setCart([]);
   }, []);
 
-  const clearCart = useCallback(() => setCart([]), []);
-
   const checkout = useCallback(
-    async (total: number) => {
-      if (!user) return { ok: false, error: "Vui lòng đăng nhập để thanh toán." };
-      if (!user.emailVerified) {
-        return { ok: false, error: "Vui lòng xác thực email trước khi mua." };
+    async (total: number): Promise<CheckoutResult> => {
+      if (!user) {
+        return {
+          ok: false,
+          error: "Vui lòng đăng nhập để thanh toán.",
+        };
       }
-      if (cart.length === 0) return { ok: false, error: "Giỏ hàng trống." };
 
-      // Simulate API latency
+      if (!user.emailVerified) {
+        return {
+          ok: false,
+          error: "Vui lòng xác thực email trước khi mua.",
+        };
+      }
+
+      if (cart.length === 0) {
+        return {
+          ok: false,
+          error: "Giỏ hàng trống.",
+        };
+      }
+
       await new Promise((resolve) => setTimeout(resolve, 1000));
 
-      const users = JSON.parse(localStorage.getItem("linh-nam-users") ?? "[]") as any[];
-      const userIdx = users.findIndex((u) => u.id === user.id);
+      const users = getStoredUsers();
+
+      const userIdx = users.findIndex(
+        (storedUser) => storedUser.id === user.id
+      );
 
       if (userIdx === -1) {
-        return { ok: false, error: "Tài khoản không tồn tại." };
+        return {
+          ok: false,
+          error: "Tài khoản không tồn tại.",
+        };
       }
 
       const userObj = users[userIdx];
+
       if (userObj.balance < total) {
-        return { ok: false, error: "Số dư Linh Thạch không đủ." };
+        return {
+          ok: false,
+          error: "Số dư Linh Thạch không đủ.",
+        };
       }
 
-      userObj.balance -= total;
-      users[userIdx] = userObj;
+      const updatedUser: StoredUser = {
+        ...userObj,
+        balance: userObj.balance - total,
+      };
 
-      localStorage.setItem("linh-nam-users", JSON.stringify(users));
-      localStorage.setItem("linh-nam-current-user", JSON.stringify(userObj));
+      users[userIdx] = updatedUser;
 
-      setBalance(userObj.balance);
-      clearCart();
+      saveStoredUsers(users);
 
-      const orderId = "order_" + Math.random().toString(36).substring(2, 9).toUpperCase();
+      localStorage.setItem(
+        CURRENT_USER_KEY,
+        JSON.stringify(updatedUser)
+      );
 
-      // Save order info locally
-      const orders = JSON.parse(localStorage.getItem("linh-nam-orders") ?? "[]");
-      orders.push({
+      setBalance(updatedUser.balance);
+
+      const orderId =
+        "order_" +
+        Math.random()
+          .toString(36)
+          .substring(2, 9)
+          .toUpperCase();
+
+      const orders = getStoredOrders();
+
+      const newOrder: StoredOrder = {
         id: orderId,
         userId: user.id,
         items: cart,
         total,
         status: "paid",
         createdAt: new Date().toISOString(),
-      });
-      localStorage.setItem("linh-nam-orders", JSON.stringify(orders));
+      };
 
-      return { ok: true, orderId };
+      orders.push(newOrder);
+
+      localStorage.setItem(
+        ORDERS_KEY,
+        JSON.stringify(orders)
+      );
+
+      clearCart();
+
+      return {
+        ok: true,
+        orderId,
+      };
     },
     [user, cart, clearCart]
   );
@@ -343,17 +601,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     checkout,
   };
 
-  return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>;
+  return (
+    <AuthCtx.Provider value={value}>
+      {children}
+    </AuthCtx.Provider>
+  );
 }
 
 export function useAuth() {
   const ctx = useContext(AuthCtx);
-  if (!ctx) throw new Error("useAuth must be used within AuthProvider");
+
+  if (!ctx) {
+    throw new Error(
+      "useAuth must be used within AuthProvider"
+    );
+  }
+
   return ctx;
 }
 
 export function getPendingVerifyUserId(): string | null {
-  if (typeof window === "undefined") return null;
+  if (typeof window === "undefined") {
+    return null;
+  }
+
   return localStorage.getItem(PENDING_VERIFY_KEY);
 }
-

@@ -15,7 +15,7 @@ const STORAGE_KEY = "linh-nam-theme";
 
 interface ThemeContextValue {
   theme: Theme;
-  setTheme: (t: Theme) => void;
+  setTheme: (theme: Theme) => void;
   toggleTheme: () => void;
   mounted: boolean;
 }
@@ -23,50 +23,69 @@ interface ThemeContextValue {
 const ThemeCtx = createContext<ThemeContextValue | null>(null);
 
 function getInitialTheme(): Theme {
-  if (typeof window === "undefined") return "dark";
-  const stored = localStorage.getItem(STORAGE_KEY) as Theme | null;
-  if (stored === "light" || stored === "dark") return stored;
+  if (typeof window === "undefined") {
+    return "dark";
+  }
+
+  const stored = localStorage.getItem(STORAGE_KEY);
+
+  if (stored === "light" || stored === "dark") {
+    return stored;
+  }
+
   return window.matchMedia("(prefers-color-scheme: light)").matches
     ? "light"
     : "dark";
 }
 
-export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>("dark");
-  const [mounted, setMounted] = useState(false);
+export function ThemeProvider({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const [theme, setThemeState] = useState<Theme>(getInitialTheme);
 
-  useEffect(() => {
-    const initial = getInitialTheme();
-    setThemeState(initial);
-    document.documentElement.dataset.theme = initial;
-    setMounted(true);
-  }, []);
-
-  const setTheme = useCallback((t: Theme) => {
-    setThemeState(t);
-    document.documentElement.dataset.theme = t;
-    localStorage.setItem(STORAGE_KEY, t);
+  const setTheme = useCallback((nextTheme: Theme) => {
+    setThemeState(nextTheme);
   }, []);
 
   const toggleTheme = useCallback(() => {
-    setThemeState((prev) => {
-      const next: Theme = prev === "dark" ? "light" : "dark";
-      document.documentElement.dataset.theme = next;
-      localStorage.setItem(STORAGE_KEY, next);
-      return next;
-    });
+    setThemeState((prev) =>
+      prev === "dark" ? "light" : "dark"
+    );
   }, []);
 
-  const value = useMemo(
-    () => ({ theme, setTheme, toggleTheme, mounted }),
-    [theme, setTheme, toggleTheme, mounted]
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem(STORAGE_KEY, theme);
+  }, [theme]);
+  const mounted = true;
+
+  const value = useMemo<ThemeContextValue>(
+    () => ({
+      theme,
+      setTheme,
+      toggleTheme,
+      mounted,
+    }),
+    [theme, setTheme, toggleTheme]
   );
 
-  return <ThemeCtx.Provider value={value}>{children}</ThemeCtx.Provider>;
+  return (
+    <ThemeCtx.Provider value={value}>
+      {children}
+    </ThemeCtx.Provider>
+  );
 }
 
 export function useTheme() {
   const ctx = useContext(ThemeCtx);
-  if (!ctx) throw new Error("useTheme must be used within ThemeProvider");
+
+  if (!ctx) {
+    throw new Error(
+      "useTheme must be used within ThemeProvider"
+    );
+  }
+
   return ctx;
 }

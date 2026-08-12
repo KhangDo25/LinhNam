@@ -23,7 +23,11 @@ const AudioCtx = createContext<AudioContextValue | null>(null);
 
 export function useAmbientAudio() {
   const ctx = useContext(AudioCtx);
-  if (!ctx) throw new Error("useAmbientAudio must be used within AudioProvider");
+
+  if (!ctx) {
+    throw new Error("useAmbientAudio must be used within AudioProvider");
+  }
+
   return ctx;
 }
 
@@ -36,110 +40,161 @@ export function AudioProvider({
 }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const fadeRef = useRef<number | null>(null);
+
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTrack, setCurrentTrack] = useState<string | null>(null);
 
-  const clearFade = () => {
-    if (fadeRef.current) {
+  const clearFade = useCallback(() => {
+    if (fadeRef.current !== null) {
       cancelAnimationFrame(fadeRef.current);
       fadeRef.current = null;
     }
-  };
-
-  const fadeVolume = (
-    audio: HTMLAudioElement,
-    target: number,
-    duration = 800,
-    onDone?: () => void
-  ) => {
-    clearFade();
-    const start = audio.volume;
-    const startTime = performance.now();
-
-    const step = (now: number) => {
-      const progress = Math.min((now - startTime) / duration, 1);
-      const rawVolume = start + (target - start) * progress;
-      
-      audio.volume = Math.max(0, Math.min(1, rawVolume));
-
-      if (progress < 1) {
-        fadeRef.current = requestAnimationFrame(step);
-      } else {
-        audio.volume = Math.max(0, Math.min(1, target));
-        // Kích hoạt callback dừng hoặc chuyển nhạc khi hoàn tất fade
-        if (onDone) onDone(); 
-      }
-    };
-
-    fadeRef.current = requestAnimationFrame(step);
-  }; // <-- ĐÓNG NGOẶC HÀM FADEVOLUME CHUẨN XÁC Ở ĐÂY
-
-  const play = useCallback((src: string, volume = 0.35) => {
-    if (audioRef.current) {
-      audioRef.current.pause();
-    }
-    audioRef.current = new Audio(src);
-    audioRef.current.loop = true;
-    audioRef.current.volume = 0;
-    
-    const playPromise = audioRef.current.play();
-    if (playPromise) {
-      playPromise
-        .then(() => {
-          setIsPlaying(true);
-          setCurrentTrack(src);
-          if (audioRef.current) {
-            fadeVolume(audioRef.current, volume);
-          }
-        })
-        .catch(() => setIsPlaying(false));
-    }
   }, []);
+
+  const fadeVolume = useCallback(
+    (
+      audio: HTMLAudioElement,
+      target: number,
+      duration = 800,
+      onDone?: () => void
+    ) => {
+      clearFade();
+
+      const start = audio.volume;
+      const startTime = performance.now();
+
+      const step = (now: number) => {
+        const progress = Math.min((now - startTime) / duration, 1);
+        const rawVolume = start + (target - start) * progress;
+
+        audio.volume = Math.max(0, Math.min(1, rawVolume));
+
+        if (progress < 1) {
+          fadeRef.current = requestAnimationFrame(step);
+        } else {
+          audio.volume = Math.max(0, Math.min(1, target));
+          fadeRef.current = null;
+
+          if (onDone) {
+            onDone();
+          }
+        }
+      };
+
+      fadeRef.current = requestAnimationFrame(step);
+    },
+    [clearFade]
+  );
+
+  const play = useCallback(
+    (src: string, volume = 0.35) => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+
+      const audio = new Audio(src);
+
+      audioRef.current = audio;
+      audio.loop = true;
+      audio.volume = 0;
+
+      const playPromise = audio.play();
+
+      if (playPromise) {
+        playPromise
+          .then(() => {
+            setIsPlaying(true);
+            setCurrentTrack(src);
+
+            if (audioRef.current === audio) {
+              fadeVolume(audio, volume);
+            }
+          })
+          .catch(() => {
+            setIsPlaying(false);
+          });
+      }
+    },
+    [fadeVolume]
+  );
 
   const stop = useCallback(() => {
-    if (!audioRef.current) return;
-    fadeVolume(audioRef.current, 0, 600, () => {
-      audioRef.current?.pause();
-      setIsPlaying(false);
+    const audio = audioRef.current;
+
+    if (!audio) return;
+
+    fadeVolume(audio, 0, 600, () => {
+      audio.pause();
+
+      if (audioRef.current === audio) {
+        setIsPlaying(false);
+        setCurrentTrack(null);
+      }
     });
-  }, []);
+  }, [fadeVolume]);
 
   const toggle = useCallback(
     (src?: string, volume = 0.35) => {
-      if (isPlaying) stop();
-      else play(src ?? defaultTrack, volume);
+      if (isPlaying) {
+        stop();
+      } else {
+        play(src ?? defaultTrack, volume);
+      }
     },
     [isPlaying, stop, play, defaultTrack]
   );
 
-  const setVolume = useCallback((volume: number, duration = 400) => {
-    if (audioRef.current) fadeVolume(audioRef.current, volume, duration);
-  }, []);
+  const setVolume = useCallback(
+    (volume: number, duration = 400) => {
+      if (audioRef.current) {
+        fadeVolume(audioRef.current, volume, duration);
+      }
+    },
+    [fadeVolume]
+  );
 
   const fadeTo = useCallback(
     (src: string, volume = 0.35) => {
-      if (!audioRef.current || currentTrack === src) {
-        if (!isPlaying) play(src, volume);
+      const currentAudio = audioRef.current;
+
+      if (!currentAudio || currentTrack === src) {
+        if (!isPlaying) {
+          play(src, volume);
+        }
+
         return;
       }
-      fadeVolume(audioRef.current, 0, 500, () => {
-        audioRef.current?.pause();
-        play(src, volume);
+
+      fadeVolume(currentAudio, 0, 500, () => {
+        currentAudio.pause();
+
+        if (audioRef.current === currentAudio) {
+          play(src, volume);
+        }
       });
     },
-    [currentTrack, isPlaying, play]
+    [currentTrack, isPlaying, play, fadeVolume]
   );
 
   useEffect(() => {
     return () => {
       clearFade();
       audioRef.current?.pause();
+      audioRef.current = null;
     };
-  }, []);
+  }, [clearFade]);
 
   return (
     <AudioCtx.Provider
-      value={{ isPlaying, currentTrack, play, stop, toggle, fadeTo, setVolume }}
+      value={{
+        isPlaying,
+        currentTrack,
+        play,
+        stop,
+        toggle,
+        fadeTo,
+        setVolume,
+      }}
     >
       {children}
     </AudioCtx.Provider>

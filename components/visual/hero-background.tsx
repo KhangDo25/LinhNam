@@ -1,7 +1,6 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { useEffect, useState } from "react";
 
 type Particle = {
   left: number;
@@ -11,46 +10,30 @@ type Particle = {
   size: number;
 };
 
+const particles: Particle[] = Array.from(
+  { length: 20 },
+  (_, index) => ({
+    left: (index * 37.5 + 8) % 100,
+    duration: 10 + ((index * 7) % 10),
+    delay: (index * 3.7) % 10,
+    drift: ((index * 47) % 120) - 60,
+    size: 1 + ((index * 13) % 20) / 10,
+  })
+);
+
 export default function HeroBackground() {
-  const [particles, setParticles] = useState<Particle[]>([]);
-
-  /*
-    Generate particles ONLY on client
-    tránh hydration mismatch của Next.js
-  */
-
-  useEffect(() => {
-    const generatedParticles = Array.from({ length: 20 }).map(() => ({
-      left: Math.random() * 100,
-
-      duration: 10 + Math.random() * 10,
-
-      delay: Math.random() * 10,
-
-      drift: Math.random() * 120 - 60,
-
-      size: Math.random() * 3 + 1,
-    }));
-
-    setParticles(generatedParticles);
-  }, []);
-
   return (
     <div className="absolute inset-0 overflow-hidden">
-
       <div className="absolute inset-0 bg-[#050507]" />
 
       <motion.div
         animate={{
           opacity: [0.25, 0.45, 0.25],
-
           scale: [1, 1.1, 1],
         }}
         transition={{
           duration: 8,
-
           repeat: Infinity,
-
           ease: "easeInOut",
         }}
         className="
@@ -67,16 +50,13 @@ export default function HeroBackground() {
         "
       />
 
-      {/* Fog Layer 1 */}
       <motion.div
         animate={{
           x: [0, 100, 0],
         }}
         transition={{
           duration: 30,
-
           repeat: Infinity,
-
           ease: "linear",
         }}
         className="
@@ -89,7 +69,7 @@ export default function HeroBackground() {
           from-transparent
           via-[#ffffff05]
           to-transparent
-          blur-3xln
+          blur-3xl
         "
       />
 
@@ -99,9 +79,7 @@ export default function HeroBackground() {
         }}
         transition={{
           duration: 40,
-
           repeat: Infinity,
-
           ease: "linear",
         }}
         className="
@@ -118,29 +96,22 @@ export default function HeroBackground() {
         "
       />
 
-      {/* Floating Particles */}
-      {particles.map((particle, i) => (
+      {particles.map((particle, index) => (
         <motion.div
-          key={i}
+          key={index}
           initial={{
             opacity: 0,
-
             y: 100,
           }}
           animate={{
             opacity: [0, 0.7, 0],
-
             y: -900,
-
             x: [0, particle.drift],
           }}
           transition={{
             duration: particle.duration,
-
             repeat: Infinity,
-
             delay: particle.delay,
-
             ease: "linear",
           }}
           className="
@@ -151,11 +122,8 @@ export default function HeroBackground() {
           "
           style={{
             left: `${particle.left}%`,
-
             bottom: "-20px",
-
             width: `${particle.size}px`,
-
             height: `${particle.size}px`,
           }}
         />
@@ -173,6 +141,7 @@ export default function HeroBackground() {
           blur-3xl
         "
       />
+
       <div
         className="
           absolute

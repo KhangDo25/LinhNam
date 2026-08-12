@@ -1,22 +1,20 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { usePerformance } from "@/components/providers/performance-provider";
 import MountainSilhouette from "@/components/visual/mountain-silhouette";
 
 export default function HeroDepthLayers() {
   const perf = usePerformance();
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [mounted, setMounted] = useState(false);
   const runningRef = useRef(true);
 
-  useEffect(() => setMounted(true), []);
-
   useEffect(() => {
-    if (!mounted || !perf.canvasParticles) return;
+    if (!perf.canvasParticles) return;
 
     const canvas = canvasRef.current;
     if (!canvas) return;
+
     const ctx = canvas.getContext("2d", { alpha: true });
     if (!ctx) return;
 
@@ -25,7 +23,14 @@ export default function HeroDepthLayers() {
     let lastFrame = 0;
     const frameInterval = perf.profile === "full" ? 32 : 48;
 
-    type P = { x: number; y: number; s: number; sp: number; a: number };
+    type P = {
+      x: number;
+      y: number;
+      s: number;
+      sp: number;
+      a: number;
+    };
+
     const particles: P[] = Array.from({ length: count }, () => ({
       x: 0,
       y: 0,
@@ -37,15 +42,18 @@ export default function HeroDepthLayers() {
     const resize = () => {
       const w = canvas.offsetWidth;
       const h = canvas.offsetHeight;
+
       if (w && h) {
         canvas.width = w;
         canvas.height = h;
+
         particles.forEach((p) => {
           p.x = Math.random() * w;
           p.y = Math.random() * h;
         });
       }
     };
+
     resize();
 
     const resizeObserver = new ResizeObserver(resize);
@@ -54,6 +62,7 @@ export default function HeroDepthLayers() {
     const onVisibility = () => {
       runningRef.current = document.visibilityState === "visible";
     };
+
     document.addEventListener("visibilitychange", onVisibility);
 
     let storyP = 0;
@@ -61,8 +70,10 @@ export default function HeroDepthLayers() {
 
     const draw = (time: number) => {
       rafId = requestAnimationFrame(draw);
+
       if (!runningRef.current) return;
       if (time - lastFrame < frameInterval) return;
+
       lastFrame = time;
 
       storyP = parseFloat(
@@ -70,6 +81,7 @@ export default function HeroDepthLayers() {
           "--story-particles"
         ) || "0"
       );
+
       mx = parseFloat(
         getComputedStyle(document.documentElement).getPropertyValue(
           "--mouse-nx"
@@ -79,25 +91,31 @@ export default function HeroDepthLayers() {
       if (storyP < 0.05 && time % 1200 < frameInterval) return;
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+
       const density = 0.25 + storyP * 0.5;
 
       for (let i = 0; i < particles.length; i++) {
         const p = particles[i];
+
         p.y -= p.sp * (0.4 + storyP * 0.4);
         p.x += mx * 0.15;
+
         if (p.y < 0) {
           p.y = canvas.height;
           p.x = Math.random() * canvas.width;
         }
+
         ctx.globalAlpha = p.a * density;
         ctx.fillStyle = "#C6A972";
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.s, 0, Math.PI * 2);
         ctx.fill();
       }
+
       ctx.globalAlpha = 1;
     };
 
+    runningRef.current = true;
     rafId = requestAnimationFrame(draw);
 
     return () => {
@@ -106,11 +124,7 @@ export default function HeroDepthLayers() {
       resizeObserver.disconnect();
       document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [mounted, perf.canvasParticles, perf.profile]);
-
-  if (!mounted) {
-    return <div className="fixed inset-0 z-0 bg-abyss pointer-events-none" />;
-  }
+  }, [perf.canvasParticles, perf.profile]);
 
   const fogBlur = perf.heavyBlur ? "blur(40px)" : "none";
 
@@ -154,7 +168,8 @@ export default function HeroDepthLayers() {
           className="absolute inset-0 w-full h-full"
           style={{
             opacity: "calc(0.3 + var(--story-particles) * 0.5)",
-            transform: "translate3d(0, calc(var(--scroll-y) * -0.05), 0)",
+            transform:
+              "translate3d(0, calc(var(--scroll-y) * -0.05), 0)",
           }}
           aria-hidden
         />
@@ -177,7 +192,8 @@ export default function HeroDepthLayers() {
             background:
               "radial-gradient(480px circle at var(--mouse-x) var(--mouse-y), color-mix(in srgb, var(--gold) calc(5% + var(--story-light) * 8%), transparent), transparent 65%)",
             opacity: "calc(0.4 + var(--story-light) * 0.4)",
-            transform: "translate3d(0, calc(var(--scroll-y) * -0.02), 0)",
+            transform:
+              "translate3d(0, calc(var(--scroll-y) * -0.02), 0)",
           }}
         />
       )}
