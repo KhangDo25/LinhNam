@@ -1,16 +1,25 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePerformance } from "@/components/providers/performance-provider";
 import MountainSilhouette from "@/components/visual/mountain-silhouette";
 
 export default function HeroDepthLayers() {
   const perf = usePerformance();
+
+  const [mounted, setMounted] = useState(false);
+
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const runningRef = useRef(true);
 
+  // Chỉ render các tính năng phụ thuộc performance
+  // sau khi component đã mount trên client.
   useEffect(() => {
-    if (!perf.canvasParticles) return;
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!mounted || !perf.canvasParticles) return;
 
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -21,6 +30,7 @@ export default function HeroDepthLayers() {
     const count = perf.profile === "full" ? 22 : 12;
     let rafId = 0;
     let lastFrame = 0;
+
     const frameInterval = perf.profile === "full" ? 32 : 48;
 
     type P = {
@@ -76,19 +86,19 @@ export default function HeroDepthLayers() {
 
       lastFrame = time;
 
+      const styles = getComputedStyle(document.documentElement);
+
       storyP = parseFloat(
-        getComputedStyle(document.documentElement).getPropertyValue(
-          "--story-particles"
-        ) || "0"
+        styles.getPropertyValue("--story-particles") || "0"
       );
 
       mx = parseFloat(
-        getComputedStyle(document.documentElement).getPropertyValue(
-          "--mouse-nx"
-        ) || "0"
+        styles.getPropertyValue("--mouse-nx") || "0"
       );
 
-      if (storyP < 0.05 && time % 1200 < frameInterval) return;
+      if (storyP < 0.05 && time % 1200 < frameInterval) {
+        return;
+      }
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -107,6 +117,7 @@ export default function HeroDepthLayers() {
 
         ctx.globalAlpha = p.a * density;
         ctx.fillStyle = "#C6A972";
+
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.s, 0, Math.PI * 2);
         ctx.fill();
@@ -120,11 +131,17 @@ export default function HeroDepthLayers() {
 
     return () => {
       runningRef.current = false;
+
       cancelAnimationFrame(rafId);
+
       resizeObserver.disconnect();
-      document.removeEventListener("visibilitychange", onVisibility);
+
+      document.removeEventListener(
+        "visibilitychange",
+        onVisibility
+      );
     };
-  }, [perf.canvasParticles, perf.profile]);
+  }, [mounted, perf.canvasParticles, perf.profile]);
 
   const fogBlur = perf.heavyBlur ? "blur(40px)" : "none";
 
@@ -135,8 +152,10 @@ export default function HeroDepthLayers() {
         style={{
           background:
             "radial-gradient(ellipse 80% 60% at 50% 40%, color-mix(in srgb, var(--gold) calc(8% + var(--story-light) * 12%), transparent), transparent 70%), linear-gradient(180deg, var(--abyss) 0%, var(--void) 100%)",
-          opacity: "calc(0.85 + var(--story-light) * 0.15)",
-          transform: "translate3d(0, calc(var(--scroll-y) * -0.01), 0)",
+          opacity:
+            "calc(0.85 + var(--story-light) * 0.15)",
+          transform:
+            "translate3d(0, calc(var(--scroll-y) * -0.01), 0)",
         }}
       />
 
@@ -145,9 +164,11 @@ export default function HeroDepthLayers() {
         style={{
           background:
             "radial-gradient(ellipse at 30% 60%, color-mix(in srgb, var(--bone) calc(var(--story-fog) * 6%), transparent), transparent 55%), radial-gradient(ellipse at 70% 40%, color-mix(in srgb, var(--gold) calc(var(--story-fog) * 4%), transparent), transparent 50%)",
-          transform: "translate3d(0, calc(var(--scroll-y) * -0.04), 0)",
+          transform:
+            "translate3d(0, calc(var(--scroll-y) * -0.04), 0)",
           filter: fogBlur,
-          opacity: "calc(0.3 + var(--story-fog) * 0.5)",
+          opacity:
+            "calc(0.3 + var(--story-fog) * 0.5)",
         }}
       />
 
@@ -156,18 +177,20 @@ export default function HeroDepthLayers() {
         style={{
           transform:
             "translate3d(0, calc(var(--scroll-y) * -0.08 + (1 - var(--story-mountain)) * 80px), 0)",
-          opacity: "calc(0.4 + var(--story-mountain) * 0.6)",
+          opacity:
+            "calc(0.4 + var(--story-mountain) * 0.6)",
         }}
       >
         <MountainSilhouette />
       </div>
 
-      {perf.canvasParticles && (
+      {mounted && perf.canvasParticles && (
         <canvas
           ref={canvasRef}
           className="absolute inset-0 w-full h-full"
           style={{
-            opacity: "calc(0.3 + var(--story-particles) * 0.5)",
+            opacity:
+              "calc(0.3 + var(--story-particles) * 0.5)",
             transform:
               "translate3d(0, calc(var(--scroll-y) * -0.05), 0)",
           }}
@@ -180,18 +203,21 @@ export default function HeroDepthLayers() {
         style={{
           background:
             "linear-gradient(to top, var(--void) 0%, transparent 40%), linear-gradient(to bottom, var(--abyss) 0%, transparent 25%)",
-          transform: "translate3d(0, calc(var(--scroll-y) * -0.12), 0)",
-          opacity: "calc(0.6 + var(--story-fog) * 0.4)",
+          transform:
+            "translate3d(0, calc(var(--scroll-y) * -0.12), 0)",
+          opacity:
+            "calc(0.6 + var(--story-fog) * 0.4)",
         }}
       />
 
-      {perf.mouseLight && (
+      {mounted && perf.mouseLight && (
         <div
           className="absolute inset-0"
           style={{
             background:
               "radial-gradient(480px circle at var(--mouse-x) var(--mouse-y), color-mix(in srgb, var(--gold) calc(5% + var(--story-light) * 8%), transparent), transparent 65%)",
-            opacity: "calc(0.4 + var(--story-light) * 0.4)",
+            opacity:
+              "calc(0.4 + var(--story-light) * 0.4)",
             transform:
               "translate3d(0, calc(var(--scroll-y) * -0.02), 0)",
           }}

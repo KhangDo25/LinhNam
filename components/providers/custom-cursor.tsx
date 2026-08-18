@@ -5,10 +5,15 @@ import { usePerformance } from "./performance-provider";
 
 export default function CustomCursor() {
   const perf = usePerformance();
+
+  const [mounted, setMounted] = useState(false);
   const [hovering, setHovering] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
-    if (!perf.customCursor) return;
+    if (!mounted || !perf.customCursor) return;
 
     document.body.classList.add("custom-cursor-active");
 
@@ -36,9 +41,8 @@ export default function CustomCursor() {
       window.removeEventListener("mouseover", handleOver);
       document.body.classList.remove("custom-cursor-active");
     };
-  }, [perf.customCursor]);
-
-  if (!perf.customCursor) {
+  }, [mounted, perf.customCursor]);
+  if (!mounted || !perf.customCursor) {
     return null;
   }
 
