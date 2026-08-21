@@ -2,7 +2,8 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { Minus, Plus, Trash2 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { Minus, Plus, Trash2, History } from "lucide-react";
 import Navbar from "@/components/layout/navbar";
 import PageAtmosphere from "@/components/layout/page-atmosphere";
 import SectionTitle from "@/components/ui/section-title";
@@ -10,8 +11,10 @@ import Card from "@/components/ui/card";
 import Button from "@/components/ui/button";
 import { useAuth } from "@/components/providers/auth-provider";
 import { shopItems } from "@/data/shop";
+import { saveOrderToHistory } from "@/lib/orderHistory";
 
 export default function GioHangPage() {
+  const router = useRouter();
   const { cart, updateCartQty, removeFromCart, user, balance } = useAuth();
 
   const lines = cart
@@ -28,12 +31,32 @@ export default function GioHangPage() {
   }[];
 
   const total = lines.reduce((s, l) => s + l.subtotal, 0);
+  const handleCheckout = () => {
+    if (!user || lines.length === 0) return;
+    const orderItems = lines.map((line) => ({
+      id: line.productId,
+      name: line.product.name,
+      price: line.product.priceValue,
+      quantity: line.quantity,
+      image: line.product.image,
+    }));
+    saveOrderToHistory(orderItems, total);
+    router.push(`/thanh-toan?total=${total}`);
+  };
 
   return (
     <PageAtmosphere variant="void" className="text-bone pt-32">
       <Navbar />
       <div className="max-w-3xl mx-auto px-6 pb-32">
-        <SectionTitle eyebrow="Cửa hàng" title="Giỏ Hàng" className="mb-10" />
+        <div className="flex justify-between items-center mb-10">
+          <SectionTitle eyebrow="Cửa hàng" title="Giỏ Hàng" />
+          <Link href="/lich-su-mua-hang">
+            <Button variant="outline" size="sm" className="flex items-center gap-2">
+              <History size={16} />
+              Lịch sử mua hàng
+            </Button>
+          </Link>
+        </div>
 
         {!user && (
           <Card className="p-6 mb-8 border-gold/30 text-center" glow>
@@ -125,11 +148,18 @@ export default function GioHangPage() {
                   <span className="text-gold">{balance.toLocaleString("vi-VN")} LT</span>
                 </div>
               )}
-              <Link href={user ? `/thanh-toan?total=${total}` : "/dang-nhap"}>
-                <Button variant="primary" className="w-full" disabled={!user}>
-                  {user ? "Thanh toán" : "Đăng nhập để thanh toán"}
+              
+              {user ? (
+                <Button variant="primary" className="w-full" onClick={handleCheckout}>
+                  Thanh toán
                 </Button>
-              </Link>
+              ) : (
+                <Link href="/dang-nhap">
+                  <Button variant="primary" className="w-full">
+                    Đăng nhập để thanh toán
+                  </Button>
+                </Link>
+              )}
             </Card>
           </>
         )}

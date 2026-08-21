@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import dynamic from "next/dynamic";
 import { cn } from "@/lib/cn";
 import { usePerformance } from "@/components/providers/performance-provider";
@@ -28,6 +29,11 @@ export default function PageAtmosphere({
   className,
 }: PageAtmosphereProps) {
   const perf = usePerformance();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   return (
     <div className={cn("relative min-h-screen overflow-x-hidden", className)}>
@@ -35,15 +41,20 @@ export default function PageAtmosphere({
         <div
           className={cn(
             "absolute inset-0 bg-gradient-to-b",
-            perf.heavyBlur ? "opacity-90" : "opacity-95",
+            mounted && perf?.heavyBlur ? "opacity-90" : "opacity-95",
             variantStyles[variant]
           )}
         />
-        {perf.fogAnimation && (
-          <FogLayer intensity="light" color="rgba(198, 169, 114, 0.03)" />
-        )}
-        {perf.profile !== "minimal" && (
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_20%,color-mix(in_srgb,var(--gold)_5%,transparent),transparent_55%)]" />
+
+        {mounted && (
+          <>
+            {perf?.fogAnimation && (
+              <FogLayer intensity="light" color="rgba(198, 169, 114, 0.03)" />
+            )}
+            {perf?.profile !== "minimal" && (
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_20%,color-mix(in_srgb,var(--gold)_5%,transparent),transparent_55%)]" />
+            )}
+          </>
         )}
       </div>
       <div className="relative z-10">{children}</div>

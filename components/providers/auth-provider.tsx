@@ -28,7 +28,9 @@ interface StoredUser extends User {
   balance: number;
 }
 
-interface StoredOrder {
+type StoredOrder = Order;
+
+export interface Order {
   id: string;
   userId: string;
   items: CartItem[];
@@ -49,6 +51,7 @@ interface CheckoutResult {
   ok: boolean;
   error?: string;
   orderId?: string;
+  items?: CartItem[];
 }
 
 interface AuthContextValue {
@@ -573,11 +576,14 @@ export function AuthProvider({
         JSON.stringify(orders)
       );
 
+      const orderedItems = [...cart];
+
       clearCart();
 
       return {
         ok: true,
         orderId,
+        items: orderedItems,
       };
     },
     [user, cart, clearCart]
