@@ -1,6 +1,5 @@
 "use client";
-
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import AuthFormShell from "@/components/auth/auth-form-shell";
@@ -14,32 +13,24 @@ export default function XacThucPage() {
   const { verifyEmail, resendVerification } = useAuth();
   const router = useRouter();
 
-  const [userId] = useState<string | null>(() =>
-    getPendingVerifyUserId()
-  );
-
+  const [userId, setUserId] = useState<string | null>(null);
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
-
-  const [demoCode, setDemoCode] = useState<string | null>(() => {
-    if (typeof window === "undefined") {
-      return null;
-    }
-
-    const stored = sessionStorage.getItem("linh-nam-demo-otp");
-
-    if (stored) {
-      sessionStorage.removeItem("linh-nam-demo-otp");
-    }
-
-    return stored;
-  });
-
+  const [message, setMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [resending, setResending] = useState(false);
+  const [emailSent, setEmailSent] = useState(false);
+  useEffect(() => {
+    const pendingUserId = getPendingVerifyUserId();
+    if (pendingUserId) {
+      setUserId(pendingUserId);
+      setEmailSent(true); 
+    } else {
+      router.push("/dang-ky");
+    }
+  }, [router]);
 
-  const onSubmit = async (
-    e: React.FormEvent<HTMLFormElement>
-  ) => {
+  const onSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
 
     if (!userId) {
@@ -54,6 +45,7 @@ export default function XacThucPage() {
 
     setSubmitting(true);
     setError("");
+    setMessage("");
 
     try {
       const result = await verifyEmail(userId, code);
@@ -63,7 +55,10 @@ export default function XacThucPage() {
         return;
       }
 
-      router.push("/cua-hang");
+      setMessage("✅ Xác thực thành công! Đang chuyển hướng...");
+      setTimeout(() => {
+        router.push("/dang-nhap?verified=true");
+      }, 2000);
     } finally {
       setSubmitting(false);
     }
@@ -75,21 +70,29 @@ export default function XacThucPage() {
       return;
     }
 
+    setResending(true);
     setError("");
+    setMessage("");
 
-    const result = await resendVerification(userId);
+    try {
+      const result = await resendVerification(userId);
+      
+      if (!result.ok) {
+        setError(result.error ?? "Không thể gửi lại mã.");
+        return;
+      }
 
-    if (result.ok && result.demoCode) {
-      setDemoCode(result.demoCode);
-    } else {
-      setError(result.error ?? "Không gửi được mã.");
+      setMessage("✅ Đã gửi lại mã xác thực! Vui lòng kiểm tra email.");
+      setEmailSent(true);
+    } finally {
+      setResending(false);
     }
   };
 
   return (
     <AuthFormShell
       title="Xác thực email"
-      subtitle="Nhập mã 6 số (dev: mã hiển thị sau đăng ký; production cần gửi email thật)."
+      subtitle="Nhập mã 6 số đã được gửi đến email của bạn."
       footer={
         <Link
           href="/dang-nhap"
@@ -123,16 +126,30 @@ export default function XacThucPage() {
             placeholder="000000"
           />
         </label>
+        <div className="text-xs text-bone/40 bg-mist/20 p-3 rounded border border-gold/10">
+          <p className="flex items-center gap-2">
+            <span>📧</span>
+            <span>Mã xác thực đã được gửi đến email của bạn.</span>
+          </p>
+          <p className="mt-1 text-bone/30">
+            Kiểm tra cả hộp thư <strong>Spam</strong> nếu không thấy email.
+          </p>
+          {emailSent && (
+            <p className="mt-1 text-emerald-400/60 text-[10px]">
+              ✅ Email đã được gửi. Vui lòng kiểm tra hộp thư.
+            </p>
+          )}
+        </div>
 
-        {demoCode && (
-          <p className="text-xs text-gold/90 bg-gold/10 border border-gold/25 p-3 text-center">
-            Mã demo: <strong>{demoCode}</strong>
+        {error && (
+          <p className="text-sm text-crimson bg-crimson/10 p-2 rounded border border-crimson/20">
+            {error}
           </p>
         )}
 
-        {error && (
-          <p className="text-sm text-crimson">
-            {error}
+        {message && (
+          <p className="text-sm text-emerald-400 bg-emerald-400/10 p-2 rounded border border-emerald-400/20">
+            {message}
           </p>
         )}
 
@@ -142,16 +159,21 @@ export default function XacThucPage() {
           className="w-full min-h-[48px]"
           disabled={submitting}
         >
-          {submitting ? "Đang xử lý…" : "Xác nhận"}
+          {submitting ? "Đang xác thực..." : "Xác nhận"}
         </Button>
 
         <button
           type="button"
           onClick={onResend}
-          className="w-full text-xs text-bone/60 hover:text-gold py-2 min-h-[44px]"
+          disabled={resending}
+          className="w-full text-xs text-bone/60 hover:text-gold py-2 min-h-[44px] disabled:opacity-50 disabled:cursor-not-allowed transition"
         >
-          Gửi lại mã
+          {resending ? "Đang gửi..." : "Gửi lại mã"}
         </button>
+
+        <div className="text-center text-xs text-bone/30">
+          <p>Mã có hiệu lực trong <strong className="text-gold/60">15 phút</strong>.</p>
+        </div>
       </form>
     </AuthFormShell>
   );

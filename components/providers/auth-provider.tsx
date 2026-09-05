@@ -20,7 +20,6 @@ const PENDING_VERIFY_KEY = "linh-nam-pending-verify";
 const USERS_KEY = "linh-nam-users";
 const CURRENT_USER_KEY = "linh-nam-current-user";
 const ORDERS_KEY = "linh-nam-orders";
-const DEMO_OTP_KEY = "linh-nam-demo-otp";
 
 interface StoredUser extends User {
   password: string;
@@ -137,6 +136,7 @@ async function apiFetch(endpoint: string, options?: RequestInit) {
   
   return data;
 }
+
 export function AuthProvider({
   children,
 }: {
@@ -146,6 +146,7 @@ export function AuthProvider({
   const [balance, setBalance] = useState(150_000);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [loading, setLoading] = useState(true);
+
   const refreshSession = useCallback(async () => {
     try {
       const token = localStorage.getItem('token');
@@ -207,6 +208,7 @@ export function AuthProvider({
     () => cart.reduce((sum, item) => sum + item.quantity, 0),
     [cart]
   );
+
   const register = useCallback(
     async (name: string, email: string, password: string): Promise<AuthResult> => {
       try {
@@ -215,9 +217,14 @@ export function AuthProvider({
           body: JSON.stringify({ name, email, password }),
         });
 
+        if (data.userId) {
+          localStorage.setItem(PENDING_VERIFY_KEY, data.userId);
+        }
+
         return {
           ok: true,
           userId: data.user?.id || data.userId,
+          needsVerification: true,
         };
       } catch (error: any) {
         console.error('Register error:', error);
@@ -229,6 +236,7 @@ export function AuthProvider({
     },
     []
   );
+
   const login = useCallback(
     async (email: string, password: string): Promise<AuthResult> => {
       const lockMsg = getLoginLockoutMessage();
@@ -274,59 +282,53 @@ export function AuthProvider({
 
   const verifyEmail = useCallback(
     async (userId: string, code: string): Promise<AuthResult> => {
-      await new Promise((resolve) => setTimeout(resolve, 600));
+      try {
+        const data = await apiFetch('/api/auth/verify', {
+          method: 'POST',
+          body: JSON.stringify({ userId, code }),
+        });
 
-      const users = getStoredUsers();
-      const userIdx = users.findIndex((storedUser) => storedUser.id === userId);
+        if (data.user) {
+          setUser(data.user);
+          localStorage.setItem('user', JSON.stringify(data.user));
+          localStorage.removeItem(PENDING_VERIFY_KEY);
+          return { ok: true };
+        }
 
-      if (userIdx === -1) {
-        return { ok: false, error: "Tài khoản không tồn tại." };
+        return { 
+          ok: false, 
+          error: data.error || 'Xác thực thất bại' 
+        };
+      } catch (error: any) {
+        console.error('Verify error:', error);
+        return {
+          ok: false,
+          error: error.message || 'Xác thực thất bại. Vui lòng thử lại.',
+        };
       }
-
-      const userObj = users[userIdx];
-      if (userObj.verificationCode !== code) {
-        return { ok: false, error: "Mã xác thực không chính xác." };
-      }
-
-      const verifiedUser: StoredUser = {
-        ...userObj,
-        emailVerified: true,
-      };
-
-      users[userIdx] = verifiedUser;
-      saveStoredUsers(users);
-
-      setUser(createSessionUser(verifiedUser));
-      localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(verifiedUser));
-      localStorage.removeItem(PENDING_VERIFY_KEY);
-
-      return { ok: true };
     },
     []
   );
 
   const resendVerification = useCallback(
     async (userId: string): Promise<AuthResult> => {
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      try {
+        const data = await apiFetch('/api/auth/resend-verification', {
+          method: 'POST',
+          body: JSON.stringify({ userId }),
+        });
 
-      const users = getStoredUsers();
-      const userIdx = users.findIndex((storedUser) => storedUser.id === userId);
-
-      if (userIdx === -1) {
-        return { ok: false, error: "Tài khoản không tồn tại." };
+        return {
+          ok: true,
+          demoCode: data.code,
+        };
+      } catch (error: any) {
+        console.error('Resend error:', error);
+        return {
+          ok: false,
+          error: error.message || 'Không thể gửi lại mã xác thực. Vui lòng thử lại.',
+        };
       }
-
-      const newCode = String(Math.floor(100000 + Math.random() * 900000));
-      const updatedUser: StoredUser = {
-        ...users[userIdx],
-        verificationCode: newCode,
-      };
-
-      users[userIdx] = updatedUser;
-      saveStoredUsers(users);
-      sessionStorage.setItem(DEMO_OTP_KEY, newCode);
-
-      return { ok: true, demoCode: newCode };
     },
     []
   );
@@ -335,8 +337,8 @@ export function AuthProvider({
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     localStorage.removeItem(CURRENT_USER_KEY);
+    localStorage.removeItem(PENDING_VERIFY_KEY);
     setUser(null);
-   
   }, []);
 
   const addToCart = useCallback((productId: string, qty = 1) => {

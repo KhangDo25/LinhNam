@@ -1,9 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  // output: 'export',
-  // trailingSlash: true,  
-  // basePath: '/LinhNam', 
+  // output: 'export',  // ✅ Đã comment
+  // trailingSlash: true,  // ✅ Đã comment
+  allowedDevOrigins: ['192.168.100.182', 'localhost'],
   images: {
     unoptimized: true,
   },
