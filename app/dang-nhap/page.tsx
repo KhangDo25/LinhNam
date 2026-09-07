@@ -1,94 +1,110 @@
-"use client";
+'use client';
 
-import { useState } from "react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
-import AuthFormShell from "@/components/auth/auth-form-shell";
-import Button from "@/components/ui/button";
-import { useAuth } from "@/components/providers/auth-provider";
-import { getLoginLockoutMessage } from "@/lib/auth-validation";
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 
-export default function DangNhapPage() {
-  const { login } = useAuth();
+export default function LoginPage() {
   const router = useRouter();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
+  const [formData, setFormData] = useState({
+    email: '',
+    password: ''
+  });
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const [submitting, setSubmitting] = useState(false);
-
-  const onSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const lock = getLoginLockoutMessage();
-    if (lock) {
-      setError(lock);
-      return;
-    }
-    setSubmitting(true);
-    setError("");
+    setError('');
+    setLoading(true);
+
     try {
-      const result = await login(email, password);
-      if (!result.ok) {
-        if (result.needsVerification) {
-          router.push("/xac-thuc");
-          return;
-        }
-        setError(result.error ?? "Đăng nhập thất bại.");
-        return;
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(formData),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Đăng nhập thất bại');
       }
-      router.push("/cua-hang");
+
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('user', JSON.stringify(data.user));
+
+      router.push('/');
+      
+    } catch (err: any) {
+      setError(err.message);
     } finally {
-      setSubmitting(false);
+      setLoading(false);
     }
   };
 
   return (
-    <AuthFormShell
-      title="Đăng nhập"
-      subtitle="Tối đa 5 lần sai / 15 phút khóa. Tài khoản phải xác thực email trước khi mua hàng."
-      footer={
-        <>
-          Chưa có tài khoản?{" "}
-          <Link href="/dang-ky" className="text-gold hover:underline">
-            Đăng ký ngay
+    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="max-w-md w-full space-y-8 p-8 bg-white rounded-lg shadow">
+        <div>
+          <h2 className="text-3xl font-bold text-center">Đăng nhập</h2>
+          <p className="mt-2 text-center text-gray-600">
+            Chào mừng trở lại với LinhNam
+          </p>
+        </div>
+
+        {error && (
+          <div className="bg-red-50 text-red-500 p-3 rounded-md text-sm">
+            {error}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-6">
+          <div>
+            <label className="block text-sm font-medium text-gray-700">
+              Email
+            </label>
+            <input
+              type="email"
+              required
+              value={formData.email}
+              onChange={(e) => setFormData({...formData, email: e.target.value})}
+              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="example@email.com"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700">
+              Mật khẩu
+            </label>
+            <input
+              type="password"
+              required
+              value={formData.password}
+              onChange={(e) => setFormData({...formData, password: e.target.value})}
+              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="••••••••"
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+          >
+            {loading ? 'Đang đăng nhập...' : 'Đăng nhập'}
+          </button>
+        </form>
+
+        <div className="text-center">
+          <Link href="/dang-ky" className="text-sm text-blue-600 hover:text-blue-500">
+            Chưa có tài khoản? Đăng ký ngay
           </Link>
-        </>
-      }
-    >
-      <form onSubmit={onSubmit} className="space-y-4">
-        <label className="block">
-          <span className="text-[10px] uppercase tracking-widest text-bone/60">Email</span>
-          <input
-            type="email"
-            required
-            autoComplete="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            className="mt-2 w-full border border-gold/20 bg-mist/50 px-4 py-3 text-base text-bone focus:border-gold outline-none min-h-[48px]"
-          />
-        </label>
-        <label className="block">
-          <span className="text-[10px] uppercase tracking-widest text-bone/60">Mật khẩu</span>
-          <input
-            type="password"
-            required
-            autoComplete="current-password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="mt-2 w-full border border-gold/20 bg-mist/50 px-4 py-3 text-base text-bone focus:border-gold outline-none min-h-[48px]"
-          />
-        </label>
-        {error && <p className="text-sm text-crimson">{error}</p>}
-        <Button type="submit" variant="primary" className="w-full min-h-[48px]" disabled={submitting}>
-          {submitting ? "Đang xử lý…" : "Đăng nhập"}
-        </Button>
-        <Link
-          href="/xac-thuc"
-          className="block text-center text-xs text-bone/55 hover:text-gold py-2"
-        >
-          Chưa nhận mã xác thực?
-        </Link>
-      </form>
-    </AuthFormShell>
+        </div>
+      </div>
+    </div>
   );
 }

@@ -43,7 +43,7 @@ export async function POST(req: Request) {
       name,
       email: email.toLowerCase(),
       password: hashedPassword,
-      balance: 0, 
+      balance: 100_000,
       emailVerified: false,
       verificationCode,
       verificationCodeExpires,

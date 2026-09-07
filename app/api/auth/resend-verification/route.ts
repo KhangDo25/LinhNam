@@ -48,8 +48,7 @@ export async function POST(req: Request) {
     
     return NextResponse.json({
       success: true,
-      message: 'Đã gửi lại mã xác thực!',
-      code: newCode,
+      message: "Đã gửi lại mã xác thực!",
     });
     
   } catch (error) {
