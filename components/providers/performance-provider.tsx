@@ -22,12 +22,17 @@ export function usePerformance() {
   return ctx;
 }
 
+const SERVER_DEFAULT_FLAGS = {
+  // ... default flags ...
+};
+
 export default function PerformanceProvider({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const [flags, setFlags] = useState(getPerformanceFlags);
+  const [flags, setFlags] = useState(SERVER_DEFAULT_FLAGS);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     const onResize = () => setFlags(getPerformanceFlags());
@@ -38,8 +43,20 @@ export default function PerformanceProvider({
   const value = useMemo(() => flags, [flags]);
 
   useEffect(() => {
+    if (mounted) {
     document.documentElement.dataset.perf = flags.profile;
-  }, [flags.profile]);
-
-  return <PerfCtx.Provider value={value}>{children}</PerfCtx.Provider>;
 }
+  }, [flags.profile, mounted]);
+
+  useEffect(() => {
+    setFlags(flags);
+    setMounted(true);
+  }, [flags]);
+
+  return (
+    <PerfCtx.Provider value={value}>
+      {children}
+    </PerfCtx.Provider>
+  );
+}
+
