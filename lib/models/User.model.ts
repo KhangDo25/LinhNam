@@ -12,6 +12,11 @@ export interface IUser extends Document {
   orderHistory: mongoose.Types.ObjectId[];
   bookmarks: string[];
   balance: number; 
+  phone: string;
+  address: string;
+  city: string;
+  district: string;
+  ward: string;
   emailVerified: boolean;
   verificationCode: string | null;
   verificationCodeExpires: Date | null;
@@ -19,6 +24,9 @@ export interface IUser extends Document {
   updatedAt: Date;
  
   isLocked(): boolean;
+  isVerificationCodeValid(code: string): boolean;
+  generateVerificationCode(): string;
+  clearVerificationCode(): void;
 }
 
 const UserSchema = new Schema<IUser>({
@@ -77,6 +85,31 @@ const UserSchema = new Schema<IUser>({
     default: 100000, 
     min: 0,
   },
+  phone: {
+    type: String,
+    default: '',
+    trim: true,
+  },
+  address: {
+    type: String,
+    default: '',
+    trim: true,
+  },
+  city: {
+    type: String,
+    default: '',
+    trim: true,
+  },
+  district: {
+    type: String,
+    default: '',
+    trim: true,
+  },
+  ward: {
+    type: String,
+    default: '',
+    trim: true,
+  },
   emailVerified: {
     type: Boolean,
     default: false,
@@ -93,26 +126,26 @@ const UserSchema = new Schema<IUser>({
   timestamps: true,
 });
 
-UserSchema.methods.isLocked = function(): boolean {
+UserSchema.methods.isLocked = function (this: any): boolean {
   if (!this.lockUntil) return false;
   return this.lockUntil > new Date();
 };
 
-UserSchema.methods.isVerificationCodeValid = function(code: string): boolean {
+UserSchema.methods.isVerificationCodeValid = function (this: any, code: string): boolean {
   if (!this.verificationCode || !this.verificationCodeExpires) return false;
   if (this.verificationCode !== code) return false;
   if (this.verificationCodeExpires < new Date()) return false;
   return true;
 };
 
-UserSchema.methods.generateVerificationCode = function(): string {
+UserSchema.methods.generateVerificationCode = function (this: any): string {
   const code = String(Math.floor(100000 + Math.random() * 900000));
   this.verificationCode = code;
   this.verificationCodeExpires = new Date(Date.now() + 15 * 60 * 1000); // 15 phút
   return code;
 };
 
-UserSchema.methods.clearVerificationCode = function(): void {
+UserSchema.methods.clearVerificationCode = function (this: any): void {
   this.verificationCode = null;
   this.verificationCodeExpires = null;
 };

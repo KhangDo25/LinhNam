@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { usePerformance } from "@/components/providers/performance-provider";
 
-function AppTemplate({ children }: { children: React.ReactNode }) {
+export default function Template({ children }: { children: React.ReactNode }) {
   const perf = usePerformance();
   const [mounted, setMounted] = useState(false);
 

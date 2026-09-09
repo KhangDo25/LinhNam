@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import connectDB from "@/lib/mongodb";
 import User from "@/lib/models/User.model";
-import { verifySession } from "@/lib/auth-session";
 
 export async function POST(req: Request) {
   try {

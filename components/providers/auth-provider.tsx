@@ -17,15 +17,6 @@ import {
 
 const CART_KEY = "linh-nam-cart";
 const PENDING_VERIFY_KEY = "linh-nam-pending-verify";
-const USERS_KEY = "linh-nam-users";
-const CURRENT_USER_KEY = "linh-nam-current-user";
-const ORDERS_KEY = "linh-nam-orders";
-
-interface StoredUser extends User {
-  password: string;
-  verificationCode: string;
-  balance: number;
-}
 
 export interface Order {
   id: string;
@@ -41,7 +32,6 @@ interface AuthResult {
   error?: string;
   needsVerification?: boolean;
   userId?: string;
-  demoCode?: string;
 }
 
 interface CheckoutResult {
@@ -71,54 +61,19 @@ interface AuthContextValue {
   removeFromCart: (productId: string) => void;
   clearCart: () => void;
   checkout: (total: number) => Promise<CheckoutResult>;
+  topup: (amount: number) => Promise<{ ok: boolean; error?: string; balance?: number; message?: string }>;
   getOrders: () => Order[];
 }
 
 const AuthCtx = createContext<AuthContextValue | null>(null);
 
-function getStoredUsers(): StoredUser[] {
-  try {
-    const stored = localStorage.getItem(USERS_KEY);
-    if (!stored) return [];
-    const parsed: unknown = JSON.parse(stored);
-    return Array.isArray(parsed) ? (parsed as StoredUser[]) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveStoredUsers(users: StoredUser[]): void {
-  localStorage.setItem(USERS_KEY, JSON.stringify(users));
-}
-
-function getStoredOrders(): Order[] {
-  try {
-    const stored = localStorage.getItem(ORDERS_KEY);
-    if (!stored) return [];
-    const parsed: unknown = JSON.parse(stored);
-    return Array.isArray(parsed) ? (parsed as Order[]) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveStoredOrders(orders: Order[]): void {
-  localStorage.setItem(ORDERS_KEY, JSON.stringify(orders));
-}
-
-function createSessionUser(user: StoredUser): User {
-  return {
-    id: user.id,
-    email: user.email,
-    name: user.name,
-    createdAt: user.createdAt,
-    emailVerified: user.emailVerified,
-  };
+function parseOrders(value: unknown): Order[] {
+  return Array.isArray(value) ? (value as Order[]) : [];
 }
 
 async function apiFetch(endpoint: string, options?: RequestInit) {
   const token = localStorage.getItem('token');
-  
+
   const response = await fetch(endpoint, {
     ...options,
     headers: {
@@ -128,12 +83,15 @@ async function apiFetch(endpoint: string, options?: RequestInit) {
     },
   });
 
-  const data = await response.json();
-  
+  const data = await response.json().catch(() => ({}));
+
   if (!response.ok) {
-    throw new Error(data.error || `API Error: ${response.status}`);
+    const err: any = new Error(data.error || `API Error: ${response.status}`);
+    err.data = data;
+    err.status = response.status;
+    throw err;
   }
-  
+
   return data;
 }
 
@@ -143,8 +101,9 @@ export function AuthProvider({
   children: React.ReactNode;
 }) {
   const [user, setUser] = useState<User | null>(null);
-  const [balance, setBalance] = useState(150_000);
+  const [balance, setBalance] = useState(100_000);
   const [cart, setCart] = useState<CartItem[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
 
   const refreshSession = useCallback(async () => {
@@ -152,25 +111,28 @@ export function AuthProvider({
       const token = localStorage.getItem('token');
       const userData = localStorage.getItem('user');
 
-      if (!token || !userData) {
+      if (!token) {
         setUser(null);
         setLoading(false);
         return;
       }
       try {
-        const data = await apiFetch('/api/auth/verify', {
+        const data = await apiFetch('/api/auth/me', {
           headers: { 'Authorization': `Bearer ${token}` }
         });
-        
+
         if (data.user) {
           setUser(data.user);
           localStorage.setItem('user', JSON.stringify(data.user));
-        } else {
+          if (typeof data.balance === 'number') setBalance(data.balance);
+        } else if (userData) {
           setUser(JSON.parse(userData));
+        } else {
+          setUser(null);
         }
       } catch (error) {
         console.warn('Verify API failed, using cached user:', error);
-        setUser(JSON.parse(userData));
+        if (userData) setUser(JSON.parse(userData));
       }
     } catch (error) {
       console.error('Refresh session error:', error);
@@ -261,16 +223,28 @@ export function AuthProvider({
         };
 
         setUser(userData);
-        
+
         localStorage.setItem('token', data.token);
         localStorage.setItem('user', JSON.stringify(userData));
+        if (typeof data.balance === 'number') setBalance(data.balance);
 
         return { ok: true };
       } catch (error: any) {
         console.error('Login error:', error);
-        
+
         recordFailedLogin();
-        
+
+        // API login trả { needsVerification, userId } kèm 403 khi chưa xác thực
+        const body = error?.data || {};
+        if (body?.needsVerification) {
+          return {
+            ok: false,
+            error: body.error || error.message,
+            needsVerification: true,
+            userId: body.userId,
+          };
+        }
+
         return {
           ok: false,
           error: error.message || 'Email hoặc mật khẩu không đúng.',
@@ -288,17 +262,9 @@ export function AuthProvider({
           body: JSON.stringify({ userId, code }),
         });
 
-        if (data.user) {
-          setUser(data.user);
-          localStorage.setItem('user', JSON.stringify(data.user));
-          localStorage.removeItem(PENDING_VERIFY_KEY);
-          return { ok: true };
-        }
-
-        return { 
-          ok: false, 
-          error: data.error || 'Xác thực thất bại' 
-        };
+        localStorage.removeItem(PENDING_VERIFY_KEY);
+        if (typeof data.balance === 'number') setBalance(data.balance);
+        return { ok: true };
       } catch (error: any) {
         console.error('Verify error:', error);
         return {
@@ -313,15 +279,12 @@ export function AuthProvider({
   const resendVerification = useCallback(
     async (userId: string): Promise<AuthResult> => {
       try {
-        const data = await apiFetch('/api/auth/resend-verification', {
+        await apiFetch('/api/auth/resend-verification', {
           method: 'POST',
           body: JSON.stringify({ userId }),
         });
 
-        return {
-          ok: true,
-          demoCode: data.code,
-        };
+        return { ok: true };
       } catch (error: any) {
         console.error('Resend error:', error);
         return {
@@ -336,7 +299,6 @@ export function AuthProvider({
   const logout = useCallback(async () => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
-    localStorage.removeItem(CURRENT_USER_KEY);
     localStorage.removeItem(PENDING_VERIFY_KEY);
     setUser(null);
   }, []);
@@ -376,9 +338,28 @@ export function AuthProvider({
   }, []);
 
   const getOrders = useCallback(() => {
-    if (!user) return [];
-    return getStoredOrders().filter((order) => order.userId === user.id);
-  }, [user]);
+    return orders;
+  }, [orders]);
+
+  const fetchOrders = useCallback(async () => {
+    try {
+      const data = await apiFetch('/api/orders');
+      const list = parseOrders(data.orders).map((o: any) => ({
+        id: o._id?.toString?.() || o.id,
+        userId: typeof o.userId === 'object' ? o.userId?.toString?.() : (o.userId || ''),
+        items: o.items?.map?.((it: any) => ({
+          productId: typeof it.productId === 'object' ? it.productId?._id?.toString?.() || it.productId?.toString?.() : (it.productId || it.id || ''),
+          quantity: it.quantity,
+        })) || o.items || [],
+        total: o.total,
+        status: 'paid' as const,
+        createdAt: o.createdAt,
+      }));
+      setOrders(list);
+    } catch (e) {
+      console.warn('Fetch orders failed:', e);
+    }
+  }, []);
 
   const checkout = useCallback(
     async (total: number): Promise<CheckoutResult> => {
@@ -394,50 +375,44 @@ export function AuthProvider({
         return { ok: false, error: "Giỏ hàng trống." };
       }
 
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      try {
+        const data = await apiFetch('/api/checkout', {
+          method: 'POST',
+          body: JSON.stringify({ items: cart }),
+        });
 
-      const users = getStoredUsers();
-      const userIdx = users.findIndex((storedUser) => storedUser.id === user.id);
+        const orderedItems = [...cart];
+        if (typeof data.balance === 'number') setBalance(data.balance);
+        clearCart();
+        await fetchOrders();
 
-      if (userIdx === -1) {
-        return { ok: false, error: "Tài khoản không tồn tại." };
+        return { ok: true, orderId: data.orderId, items: orderedItems };
+      } catch (error: any) {
+        console.error('Checkout error:', error);
+        return { ok: false, error: error.message || 'Thanh toán thất bại.' };
       }
-
-      const userObj = users[userIdx];
-      if (userObj.balance < total) {
-        return { ok: false, error: "Số dư Linh Thạch không đủ." };
-      }
-
-      const orderedItems = [...cart];
-      const updatedUser: StoredUser = {
-        ...userObj,
-        balance: userObj.balance - total,
-      };
-
-      users[userIdx] = updatedUser;
-      saveStoredUsers(users);
-      localStorage.setItem(CURRENT_USER_KEY, JSON.stringify(updatedUser));
-      setBalance(updatedUser.balance);
-
-      const orderId = "order_" + Math.random().toString(36).substring(2, 9).toUpperCase();
-      const newOrder: Order = {
-        id: orderId,
-        userId: user.id,
-        items: orderedItems,
-        total,
-        status: "paid",
-        createdAt: new Date().toISOString(),
-      };
-
-      const orders = getStoredOrders();
-      orders.push(newOrder);
-      saveStoredOrders(orders);
-      clearCart();
-
-      return { ok: true, orderId, items: orderedItems };
     },
-    [user, cart, clearCart]
+    [user, cart, clearCart, fetchOrders]
   );
+
+  // Tải orders khi đã đăng nhập
+  useEffect(() => {
+    if (user) fetchOrders();
+    else setOrders([]);
+  }, [user, fetchOrders]);
+
+  const topup = useCallback(async (amount: number) => {
+    try {
+      const data = await apiFetch('/api/topup', {
+        method: 'POST',
+        body: JSON.stringify({ amount }),
+      });
+      if (typeof data.balance === 'number') setBalance(data.balance);
+      return { ok: true as const, balance: data.balance, message: data.message };
+    } catch (error: any) {
+      return { ok: false as const, error: error.message || 'Nạp tiền thất bại.' };
+    }
+  }, []);
 
   const value: AuthContextValue = {
     user,
@@ -455,6 +430,7 @@ export function AuthProvider({
     removeFromCart,
     clearCart,
     checkout,
+    topup,
     getOrders,
   };
 
