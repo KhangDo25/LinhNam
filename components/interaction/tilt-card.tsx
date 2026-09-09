@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { cn } from "@/lib/cn";
 import { usePerformance } from "@/components/providers/performance-provider";
 
@@ -17,9 +17,13 @@ export default function TiltCard({
 }: TiltCardProps) {
   const perf = usePerformance();
   const ref = useRef<HTMLDivElement>(null);
+  const [mounted, setMounted] = useState(false);
   const [transform, setTransform] = useState("none");
 
-  if (!perf.tiltCards) {
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+  if (!mounted || !perf.tiltCards) {
     return <div className={cn("h-full", className)}>{children}</div>;
   }
 
@@ -43,6 +47,7 @@ export default function TiltCard({
       onMouseLeave={onLeave}
       style={{ transform, transition: "transform 0.12s ease-out" }}
       className={cn("gpu", className)}
+      suppressHydrationWarning
     >
       {children}
     </div>

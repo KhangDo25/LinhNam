@@ -2,7 +2,6 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { Minus, Plus, Trash2, History } from "lucide-react";
 import Navbar from "@/components/layout/navbar";
 import PageAtmosphere from "@/components/layout/page-atmosphere";
@@ -11,17 +10,32 @@ import Card from "@/components/ui/card";
 import Button from "@/components/ui/button";
 import { useAuth } from "@/components/providers/auth-provider";
 import { shopItems } from "@/data/shop";
-import { saveOrderToHistory } from "@/lib/orderHistory";
 
 export default function GioHangPage() {
-  const router = useRouter();
-  const { cart, updateCartQty, removeFromCart, user, balance } = useAuth();
+  const {
+    cart,
+    updateCartQty,
+    removeFromCart,
+    user,
+    balance,
+    getOrders,
+  } = useAuth();
 
   const lines = cart
     .map((line) => {
-      const product = shopItems.find((p) => p.id === line.productId);
-      if (!product || product.priceValue === 0) return null;
-      return { ...line, product, subtotal: product.priceValue * line.quantity };
+      const product = shopItems.find(
+        (p) => p.id === line.productId
+      );
+
+      if (!product || product.priceValue === 0) {
+        return null;
+      }
+
+      return {
+        ...line,
+        product,
+        subtotal: product.priceValue * line.quantity,
+      };
     })
     .filter(Boolean) as {
     productId: string;
@@ -30,28 +44,33 @@ export default function GioHangPage() {
     subtotal: number;
   }[];
 
-  const total = lines.reduce((s, l) => s + l.subtotal, 0);
-  const handleCheckout = () => {
-    if (!user || lines.length === 0) return;
-    const orderItems = lines.map((line) => ({
-      id: line.productId,
-      name: line.product.name,
-      price: line.product.priceValue,
-      quantity: line.quantity,
-      image: line.product.image,
-    }));
-    saveOrderToHistory(orderItems, total);
-    router.push(`/thanh-toan?total=${total}`);
-  };
+  const total = lines.reduce(
+    (sum, line) => sum + line.subtotal,
+    0
+  );
+
+  const orders = user ? getOrders() : [];
 
   return (
-    <PageAtmosphere variant="void" className="text-bone pt-32">
+    <PageAtmosphere
+      variant="void"
+      className="text-bone pt-32"
+    >
       <Navbar />
+
       <div className="max-w-3xl mx-auto px-6 pb-32">
-        <div className="flex justify-between items-center mb-10">
-          <SectionTitle eyebrow="Cửa hàng" title="Giỏ Hàng" />
+        <div className="flex justify-between items-center mb-10 gap-4">
+          <SectionTitle
+            eyebrow="Cửa hàng"
+            title="Giỏ Hàng"
+          />
+
           <Link href="/lich-su-mua-hang">
-            <Button variant="outline" size="sm" className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="flex items-center gap-2"
+            >
               <History size={16} />
               Lịch sử mua hàng
             </Button>
@@ -59,14 +78,21 @@ export default function GioHangPage() {
         </div>
 
         {!user && (
-          <Card className="p-6 mb-8 border-gold/30 text-center" glow>
-            <p className="text-sm text-bone/75 mb-4">Đăng nhập để thanh toán và lưu giỏ hàng.</p>
+          <Card
+            className="p-6 mb-8 border-gold/30 text-center"
+            glow
+          >
+            <p className="text-sm text-bone/75 mb-4">
+              Đăng nhập để thanh toán và lưu giỏ hàng.
+            </p>
+
             <div className="flex gap-4 justify-center">
               <Link href="/dang-nhap">
                 <Button variant="primary" size="sm">
                   Đăng nhập
                 </Button>
               </Link>
+
               <Link href="/dang-ky">
                 <Button variant="outline" size="sm">
                   Đăng ký
@@ -77,17 +103,27 @@ export default function GioHangPage() {
         )}
 
         {lines.length === 0 ? (
-          <p className="text-center text-bone/60 py-16">
-            Giỏ trống.{" "}
-            <Link href="/cua-hang" className="text-gold underline">
+          <Card className="p-10 text-center mb-10" glow>
+            <p className="text-bone/60 mb-4">
+              Giỏ hàng đang trống.
+            </p>
+
+            <Link
+              href="/cua-hang"
+              className="text-gold underline"
+            >
               Mua sắm ngay
             </Link>
-          </p>
+          </Card>
         ) : (
           <>
             <div className="space-y-4 mb-8">
               {lines.map((line) => (
-                <Card key={line.productId} className="p-4 flex gap-4 items-center" glow>
+                <Card
+                  key={line.productId}
+                  className="p-4 flex gap-4 items-center"
+                  glow
+                >
                   <div className="relative h-20 w-20 shrink-0 bg-mist border border-gold/10">
                     <Image
                       src={line.product.image}
@@ -97,32 +133,57 @@ export default function GioHangPage() {
                       sizes="80px"
                     />
                   </div>
+
                   <div className="flex-grow min-w-0">
-                    <h3 className="font-heading text-lg text-gold truncate">{line.product.name}</h3>
+                    <h3 className="font-heading text-lg text-gold truncate">
+                      {line.product.name}
+                    </h3>
+
                     <p className="text-xs text-gold/70">
-                      {line.product.priceValue.toLocaleString("vi-VN")} LT × {line.quantity}
+                      {line.product.priceValue.toLocaleString(
+                        "vi-VN"
+                      )}{" "}
+                      LT × {line.quantity}
                     </p>
+
                     <div className="flex items-center gap-3 mt-2">
                       <button
                         type="button"
-                        onClick={() => updateCartQty(line.productId, line.quantity - 1)}
+                        onClick={() =>
+                          updateCartQty(
+                            line.productId,
+                            line.quantity - 1
+                          )
+                        }
                         className="p-1 border border-gold/30 text-gold hover:bg-gold/10"
                         aria-label="Giảm"
                       >
                         <Minus size={14} />
                       </button>
-                      <span className="text-sm w-6 text-center">{line.quantity}</span>
+
+                      <span className="text-sm w-6 text-center">
+                        {line.quantity}
+                      </span>
+
                       <button
                         type="button"
-                        onClick={() => updateCartQty(line.productId, line.quantity + 1)}
+                        onClick={() =>
+                          updateCartQty(
+                            line.productId,
+                            line.quantity + 1
+                          )
+                        }
                         className="p-1 border border-gold/30 text-gold hover:bg-gold/10"
                         aria-label="Tăng"
                       >
                         <Plus size={14} />
                       </button>
+
                       <button
                         type="button"
-                        onClick={() => removeFromCart(line.productId)}
+                        onClick={() =>
+                          removeFromCart(line.productId)
+                        }
                         className="ml-auto text-bone/50 hover:text-crimson"
                         aria-label="Xóa"
                       >
@@ -130,8 +191,10 @@ export default function GioHangPage() {
                       </button>
                     </div>
                   </div>
+
                   <p className="text-sm text-gold font-semibold shrink-0">
-                    {line.subtotal.toLocaleString("vi-VN")} LT
+                    {line.subtotal.toLocaleString("vi-VN")}{" "}
+                    LT
                   </p>
                 </Card>
               ))}
@@ -139,22 +202,38 @@ export default function GioHangPage() {
 
             <Card className="p-6 border-gold/25" glow>
               <div className="flex justify-between text-sm mb-2">
-                <span className="text-bone/70">Tạm tính</span>
-                <span>{total.toLocaleString("vi-VN")} LT</span>
+                <span className="text-bone/70">
+                  Tạm tính
+                </span>
+
+                <span>
+                  {total.toLocaleString("vi-VN")} LT
+                </span>
               </div>
+
               {user && (
                 <div className="flex justify-between text-sm mb-6">
-                  <span className="text-bone/70">Số dư</span>
-                  <span className="text-gold">{balance.toLocaleString("vi-VN")} LT</span>
+                  <span className="text-bone/70">
+                    Số dư
+                  </span>
+
+                  <span className="text-gold">
+                    {balance.toLocaleString("vi-VN")} LT
+                  </span>
                 </div>
               )}
-              
+
               {user ? (
-                <Button variant="primary" className="w-full" onClick={handleCheckout}>
-                  Thanh toán
-                </Button>
+                <Link
+                  href={`/thanh-toan?total=${total}`}
+                  className="block"
+                >
+                  <Button variant="primary" className="w-full">
+                    Thanh toán
+                  </Button>
+                </Link>
               ) : (
-                <Link href="/dang-nhap">
+                <Link href="/dang-nhap" className="block">
                   <Button variant="primary" className="w-full">
                     Đăng nhập để thanh toán
                   </Button>
@@ -162,6 +241,100 @@ export default function GioHangPage() {
               )}
             </Card>
           </>
+        )}
+
+        {user && orders.length > 0 && (
+          <section className="mt-16">
+            <div className="flex justify-between items-center mb-6">
+              <div>
+                <p className="text-xs uppercase tracking-[0.2em] text-gold/60">
+                  Đơn hàng
+                </p>
+
+                <h2 className="font-heading text-2xl text-gold">
+                  Đã mua gần đây
+                </h2>
+              </div>
+
+              <Link
+                href="/lich-su-mua-hang"
+                className="text-xs text-bone/50 hover:text-gold"
+              >
+                Xem tất cả →
+              </Link>
+            </div>
+
+            <div className="space-y-4">
+              {orders
+                .slice()
+                .reverse()
+                .slice(0, 3)
+                .map((order) => (
+                  <Card key={order.id} className="p-5" glow>
+                    <div className="flex justify-between items-start gap-4 mb-4">
+                      <div>
+                        <p className="text-xs text-bone/50">
+                          Mã đơn
+                        </p>
+
+                        <p className="text-sm text-gold font-semibold">
+                          {order.id
+                            .slice(0, 15)
+                            .toUpperCase()}
+                        </p>
+                      </div>
+
+                      <span className="text-xs px-3 py-1 border border-gold/20 text-gold">
+                        Đã thanh toán
+                      </span>
+                    </div>
+
+                    <div className="space-y-2">
+                      {order.items.map((item, index) => {
+                        const product = shopItems.find(
+                          (p) => p.id === item.productId
+                        );
+
+                        return (
+                          <div
+                            key={`${order.id}-${item.productId}-${index}`}
+                            className="flex justify-between text-sm"
+                          >
+                            <span className="text-bone/70">
+                              {product?.name ?? item.productId}{" "}
+                              × {item.quantity}
+                            </span>
+
+                            <span className="text-bone/90">
+                              {(
+                                (product?.priceValue ?? 0) *
+                                item.quantity
+                              ).toLocaleString("vi-VN")}{" "}
+                              LT
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <div className="border-t border-gold/10 mt-4 pt-4 flex justify-between">
+                      <span className="text-bone/50 text-xs">
+                        {new Date(
+                          order.createdAt
+                        ).toLocaleString("vi-VN")}
+                      </span>
+
+                      <span className="text-gold font-semibold">
+                        {order.total.toLocaleString(
+                          "vi-VN"
+                        )}{" "}
+                        LT
+                      </span>
+                    </div>
+                  </Card>
+                ))}
+            </div>
+          </section>
         )}
       </div>
     </PageAtmosphere>

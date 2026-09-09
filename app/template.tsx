@@ -1,10 +1,19 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { usePerformance } from "@/components/providers/performance-provider";
 
 export default function Template({ children }: { children: React.ReactNode }) {
   const perf = usePerformance();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+  if (!mounted) {
+    return <div>{children}</div>;
+  }
 
   if (!perf.pageTransitionBlur) {
     return <div className="animate-fade-in">{children}</div>;

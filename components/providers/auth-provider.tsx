@@ -28,8 +28,6 @@ interface StoredUser extends User {
   balance: number;
 }
 
-type StoredOrder = Order;
-
 export interface Order {
   id: string;
   userId: string;
@@ -74,6 +72,7 @@ interface AuthContextValue {
   removeFromCart: (productId: string) => void;
   clearCart: () => void;
   checkout: (total: number) => Promise<CheckoutResult>;
+  getOrders: () => Order[];
 }
 
 const AuthCtx = createContext<AuthContextValue | null>(null);
@@ -98,7 +97,7 @@ function saveStoredUsers(users: StoredUser[]): void {
   localStorage.setItem(USERS_KEY, JSON.stringify(users));
 }
 
-function getStoredOrders(): StoredOrder[] {
+function getStoredOrders(): Order[] {
   try {
     const stored = localStorage.getItem(ORDERS_KEY);
 
@@ -108,10 +107,14 @@ function getStoredOrders(): StoredOrder[] {
 
     const parsed: unknown = JSON.parse(stored);
 
-    return Array.isArray(parsed) ? (parsed as StoredOrder[]) : [];
+    return Array.isArray(parsed) ? (parsed as Order[]) : [];
   } catch {
     return [];
   }
+}
+
+function saveStoredOrders(orders: Order[]): void {
+  localStorage.setItem(ORDERS_KEY, JSON.stringify(orders));
 }
 
 function createSessionUser(user: StoredUser): User {
@@ -152,7 +155,10 @@ export function AuthProvider({
 
       const session = parsed as StoredUser;
       const users = getStoredUsers();
-      const dbUser = users.find((storedUser) => storedUser.id === session.id);
+
+      const dbUser = users.find(
+        (storedUser) => storedUser.id === session.id
+      );
 
       if (!dbUser) {
         setUser(null);
@@ -185,8 +191,7 @@ export function AuthProvider({
             setCart(parsed as CartItem[]);
           }
         }
-      } catch {
-      }
+      } catch {}
 
       setLoading(false);
     })();
@@ -194,12 +199,19 @@ export function AuthProvider({
 
   useEffect(() => {
     if (!loading) {
-      localStorage.setItem(CART_KEY, JSON.stringify(cart));
+      localStorage.setItem(
+        CART_KEY,
+        JSON.stringify(cart)
+      );
     }
   }, [cart, loading]);
 
   const cartCount = useMemo(
-    () => cart.reduce((sum, item) => sum + item.quantity, 0),
+    () =>
+      cart.reduce(
+        (sum, item) => sum + item.quantity,
+        0
+      ),
     [cart]
   );
 
@@ -209,12 +221,19 @@ export function AuthProvider({
       email: string,
       password: string
     ): Promise<AuthResult> => {
-      await new Promise((resolve) => setTimeout(resolve, 800));
+      await new Promise((resolve) =>
+        setTimeout(resolve, 800)
+      );
 
       const users = getStoredUsers();
       const trimmedEmail = email.trim().toLowerCase();
 
-      if (users.some((storedUser) => storedUser.email === trimmedEmail)) {
+      if (
+        users.some(
+          (storedUser) =>
+            storedUser.email === trimmedEmail
+        )
+      ) {
         return {
           ok: false,
           error: "Email này đã được sử dụng.",
@@ -222,10 +241,15 @@ export function AuthProvider({
       }
 
       const userId =
-        "user_" + Math.random().toString(36).substring(2, 9);
+        "user_" +
+        Math.random()
+          .toString(36)
+          .substring(2, 9);
 
       const demoCode = String(
-        Math.floor(100000 + Math.random() * 900000)
+        Math.floor(
+          100000 + Math.random() * 900000
+        )
       );
 
       const newUser: StoredUser = {
@@ -240,11 +264,18 @@ export function AuthProvider({
       };
 
       users.push(newUser);
+
       saveStoredUsers(users);
 
-      localStorage.setItem(PENDING_VERIFY_KEY, userId);
+      localStorage.setItem(
+        PENDING_VERIFY_KEY,
+        userId
+      );
 
-      sessionStorage.setItem(DEMO_OTP_KEY, demoCode);
+      sessionStorage.setItem(
+        DEMO_OTP_KEY,
+        demoCode
+      );
 
       return {
         ok: true,
@@ -269,21 +300,30 @@ export function AuthProvider({
         };
       }
 
-      await new Promise((resolve) => setTimeout(resolve, 800));
-
-      const users = getStoredUsers();
-      const trimmedEmail = email.trim().toLowerCase();
-
-      const userObj = users.find(
-        (storedUser) => storedUser.email === trimmedEmail
+      await new Promise((resolve) =>
+        setTimeout(resolve, 800)
       );
 
-      if (!userObj || userObj.password !== password) {
+      const users = getStoredUsers();
+
+      const trimmedEmail =
+        email.trim().toLowerCase();
+
+      const userObj = users.find(
+        (storedUser) =>
+          storedUser.email === trimmedEmail
+      );
+
+      if (
+        !userObj ||
+        userObj.password !== password
+      ) {
         recordFailedLogin();
 
         return {
           ok: false,
-          error: "Email hoặc mật khẩu không đúng.",
+          error:
+            "Email hoặc mật khẩu không đúng.",
         };
       }
 
@@ -297,15 +337,14 @@ export function AuthProvider({
           ok: false,
           needsVerification: true,
           userId: userObj.id,
-          error: "Tài khoản chưa xác thực email.",
+          error:
+            "Tài khoản chưa xác thực email.",
         };
       }
 
       clearLoginAttempts();
 
-      const sessionUser = createSessionUser(userObj);
-
-      setUser(sessionUser);
+      setUser(createSessionUser(userObj));
       setBalance(userObj.balance);
 
       localStorage.setItem(
@@ -325,12 +364,15 @@ export function AuthProvider({
       userId: string,
       code: string
     ): Promise<AuthResult> => {
-      await new Promise((resolve) => setTimeout(resolve, 600));
+      await new Promise((resolve) =>
+        setTimeout(resolve, 600)
+      );
 
       const users = getStoredUsers();
 
       const userIdx = users.findIndex(
-        (storedUser) => storedUser.id === userId
+        (storedUser) =>
+          storedUser.id === userId
       );
 
       if (userIdx === -1) {
@@ -345,7 +387,8 @@ export function AuthProvider({
       if (userObj.verificationCode !== code) {
         return {
           ok: false,
-          error: "Mã xác thực không chính xác.",
+          error:
+            "Mã xác thực không chính xác.",
         };
       }
 
@@ -358,9 +401,7 @@ export function AuthProvider({
 
       saveStoredUsers(users);
 
-      const sessionUser = createSessionUser(verifiedUser);
-
-      setUser(sessionUser);
+      setUser(createSessionUser(verifiedUser));
       setBalance(verifiedUser.balance);
 
       localStorage.setItem(
@@ -368,7 +409,9 @@ export function AuthProvider({
         JSON.stringify(verifiedUser)
       );
 
-      localStorage.removeItem(PENDING_VERIFY_KEY);
+      localStorage.removeItem(
+        PENDING_VERIFY_KEY
+      );
 
       return {
         ok: true,
@@ -378,13 +421,18 @@ export function AuthProvider({
   );
 
   const resendVerification = useCallback(
-    async (userId: string): Promise<AuthResult> => {
-      await new Promise((resolve) => setTimeout(resolve, 500));
+    async (
+      userId: string
+    ): Promise<AuthResult> => {
+      await new Promise((resolve) =>
+        setTimeout(resolve, 500)
+      );
 
       const users = getStoredUsers();
 
       const userIdx = users.findIndex(
-        (storedUser) => storedUser.id === userId
+        (storedUser) =>
+          storedUser.id === userId
       );
 
       if (userIdx === -1) {
@@ -395,7 +443,9 @@ export function AuthProvider({
       }
 
       const newCode = String(
-        Math.floor(100000 + Math.random() * 900000)
+        Math.floor(
+          100000 + Math.random() * 900000
+        )
       );
 
       const updatedUser: StoredUser = {
@@ -407,7 +457,10 @@ export function AuthProvider({
 
       saveStoredUsers(users);
 
-      sessionStorage.setItem(DEMO_OTP_KEY, newCode);
+      sessionStorage.setItem(
+        DEMO_OTP_KEY,
+        newCode
+      );
 
       return {
         ok: true,
@@ -418,9 +471,14 @@ export function AuthProvider({
   );
 
   const logout = useCallback(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    await new Promise((resolve) =>
+      setTimeout(resolve, 300)
+    );
 
-    localStorage.removeItem(CURRENT_USER_KEY);
+    localStorage.removeItem(
+      CURRENT_USER_KEY
+    );
+
     setUser(null);
   }, []);
 
@@ -428,7 +486,8 @@ export function AuthProvider({
     (productId: string, qty = 1) => {
       setCart((prev) => {
         const existing = prev.find(
-          (item) => item.productId === productId
+          (item) =>
+            item.productId === productId
         );
 
         if (existing) {
@@ -436,7 +495,8 @@ export function AuthProvider({
             item.productId === productId
               ? {
                   ...item,
-                  quantity: item.quantity + qty,
+                  quantity:
+                    item.quantity + qty,
                 }
               : item
           );
@@ -455,10 +515,16 @@ export function AuthProvider({
   );
 
   const updateCartQty = useCallback(
-    (productId: string, quantity: number) => {
+    (
+      productId: string,
+      quantity: number
+    ) => {
       if (quantity < 1) {
         setCart((prev) =>
-          prev.filter((item) => item.productId !== productId)
+          prev.filter(
+            (item) =>
+              item.productId !== productId
+          )
         );
 
         return;
@@ -478,29 +544,49 @@ export function AuthProvider({
     []
   );
 
-  const removeFromCart = useCallback((productId: string) => {
-    setCart((prev) =>
-      prev.filter((item) => item.productId !== productId)
-    );
-  }, []);
+  const removeFromCart = useCallback(
+    (productId: string) => {
+      setCart((prev) =>
+        prev.filter(
+          (item) =>
+            item.productId !== productId
+        )
+      );
+    },
+    []
+  );
 
   const clearCart = useCallback(() => {
     setCart([]);
   }, []);
 
+  const getOrders = useCallback(() => {
+    if (!user) {
+      return [];
+    }
+
+    return getStoredOrders().filter(
+      (order) => order.userId === user.id
+    );
+  }, [user]);
+
   const checkout = useCallback(
-    async (total: number): Promise<CheckoutResult> => {
+    async (
+      total: number
+    ): Promise<CheckoutResult> => {
       if (!user) {
         return {
           ok: false,
-          error: "Vui lòng đăng nhập để thanh toán.",
+          error:
+            "Vui lòng đăng nhập để thanh toán.",
         };
       }
 
       if (!user.emailVerified) {
         return {
           ok: false,
-          error: "Vui lòng xác thực email trước khi mua.",
+          error:
+            "Vui lòng xác thực email trước khi mua.",
         };
       }
 
@@ -511,18 +597,22 @@ export function AuthProvider({
         };
       }
 
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+      await new Promise((resolve) =>
+        setTimeout(resolve, 1000)
+      );
 
       const users = getStoredUsers();
 
       const userIdx = users.findIndex(
-        (storedUser) => storedUser.id === user.id
+        (storedUser) =>
+          storedUser.id === user.id
       );
 
       if (userIdx === -1) {
         return {
           ok: false,
-          error: "Tài khoản không tồn tại.",
+          error:
+            "Tài khoản không tồn tại.",
         };
       }
 
@@ -531,13 +621,17 @@ export function AuthProvider({
       if (userObj.balance < total) {
         return {
           ok: false,
-          error: "Số dư Linh Thạch không đủ.",
+          error:
+            "Số dư Linh Thạch không đủ.",
         };
       }
 
+      const orderedItems = [...cart];
+
       const updatedUser: StoredUser = {
         ...userObj,
-        balance: userObj.balance - total,
+        balance:
+          userObj.balance - total,
       };
 
       users[userIdx] = updatedUser;
@@ -558,25 +652,21 @@ export function AuthProvider({
           .substring(2, 9)
           .toUpperCase();
 
-      const orders = getStoredOrders();
-
-      const newOrder: StoredOrder = {
+      const newOrder: Order = {
         id: orderId,
         userId: user.id,
-        items: cart,
+        items: orderedItems,
         total,
         status: "paid",
-        createdAt: new Date().toISOString(),
+        createdAt:
+          new Date().toISOString(),
       };
+
+      const orders = getStoredOrders();
 
       orders.push(newOrder);
 
-      localStorage.setItem(
-        ORDERS_KEY,
-        JSON.stringify(orders)
-      );
-
-      const orderedItems = [...cart];
+      saveStoredOrders(orders);
 
       clearCart();
 
@@ -605,6 +695,7 @@ export function AuthProvider({
     removeFromCart,
     clearCart,
     checkout,
+    getOrders,
   };
 
   return (
@@ -627,9 +718,13 @@ export function useAuth() {
 }
 
 export function getPendingVerifyUserId(): string | null {
-  if (typeof window === "undefined") {
+  if (
+    typeof window === "undefined"
+  ) {
     return null;
   }
 
-  return localStorage.getItem(PENDING_VERIFY_KEY);
+  return localStorage.getItem(
+    PENDING_VERIFY_KEY
+  );
 }

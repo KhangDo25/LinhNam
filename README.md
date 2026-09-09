@@ -957,8 +957,4 @@ GitHub: [@KhangDo25](https://github.com/KhangDo25)
 
 # 📄 License
 
-<<<<<<< HEAD
 Dự án được xây dựng nhằm mục đích **học tập, nghiên cứu, thực hành Web Development và xây dựng portfolio cá nhân**.
-=======
-Dự án được xây dựng nhằm mục đích **học tập, nghiên cứu, thực hành Web Development và xây dựng portfolio cá nhân**.
->>>>>>> a77da19 (Cập nhật dự án Linh Nam)

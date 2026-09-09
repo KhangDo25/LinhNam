@@ -6,14 +6,11 @@ import MountainSilhouette from "@/components/visual/mountain-silhouette";
 
 export default function HeroDepthLayers() {
   const perf = usePerformance();
-
   const [mounted, setMounted] = useState(false);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const runningRef = useRef(true);
 
-  // Chỉ render các tính năng phụ thuộc performance
-  // sau khi component đã mount trên client.
   useEffect(() => {
     setMounted(true);
   }, []);
@@ -143,10 +140,14 @@ export default function HeroDepthLayers() {
     };
   }, [mounted, perf.canvasParticles, perf.profile]);
 
-  const fogBlur = perf.heavyBlur ? "blur(40px)" : "none";
+  // Đảm bảo fogBlur đồng nhất giữa SSR và lượt render đầu tiên trên Client
+  const fogBlur = mounted && perf.heavyBlur ? "blur(40px)" : "none";
 
   return (
-    <div className="fixed inset-0 z-0 overflow-hidden pointer-events-none contain-strict">
+    <div 
+      className="fixed inset-0 z-0 overflow-hidden pointer-events-none contain-strict"
+      suppressHydrationWarning
+    >
       <div
         className="absolute inset-0"
         style={{
