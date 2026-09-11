@@ -22,8 +22,18 @@ export function usePerformance() {
   return ctx;
 }
 
-const SERVER_DEFAULT_FLAGS = {
-  // ... default flags ...
+const SERVER_DEFAULT_FLAGS: PerformanceFlags = {
+  profile: "balanced",
+  smoothScroll: false,
+  customCursor: false,
+  mouseLight: false,
+  canvasParticles: false,
+  fogAnimation: false,
+  portalParticles: false,
+  tiltCards: false,
+  heavyBlur: false,
+  pageTransitionBlur: false,
+  loadingScreen: false,
 };
 
 export default function PerformanceProvider({
@@ -43,15 +53,16 @@ export default function PerformanceProvider({
   const value = useMemo(() => flags, [flags]);
 
   useEffect(() => {
-    if (mounted) {
-    document.documentElement.dataset.perf = flags.profile;
-}
-  }, [flags.profile, mounted]);
+    setFlags(getPerformanceFlags());
+    setMounted(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
-    setFlags(flags);
-    setMounted(true);
-  }, [flags]);
+    if (mounted) {
+      document.documentElement.dataset.perf = flags.profile;
+    }
+  }, [flags.profile, mounted]);
 
   return (
     <PerfCtx.Provider value={value}>

@@ -3,7 +3,7 @@ import connectDB from '@/lib/mongodb';
 import User from '@/lib/models/User.model';
 import bcrypt from 'bcryptjs';
 import { validateEmail, validatePassword, validateName } from '@/lib/auth-validation';
-import { sendVerificationEmail } from '@/lib/email';
+import { sendVerificationEmail, sendWithTimeout } from '@/lib/email';
 
 export async function POST(req: Request) {
   try {
@@ -56,18 +56,18 @@ export async function POST(req: Request) {
     
     let emailSent = false;
     let emailErrorMessage: string | null = null;
-    
-    try {
-      const emailResult = await sendVerificationEmail(email, verificationCode, name);
-      if (emailResult.success) {
-        emailSent = true;
-      } else {
-        emailErrorMessage = emailResult.error || 'Không thể gửi email xác thực';
-        console.warn('⚠️ Không thể gửi email xác thực:', emailErrorMessage);
-      }
-    } catch (error) {
-      console.warn('⚠️ Lỗi gửi email:', error);
-      emailErrorMessage = 'Không thể gửi email xác thực. Vui lòng kiểm tra lại email hoặc liên hệ hỗ trợ.';
+
+    // Gửi email với timeout 12s — không để SMTP treo request 30s+.
+    // User đã được tạo ở trên nên vẫn trả 201 + chuyển sang trang xác thực;
+    // nếu gửi lỗi, UI hiển thị cảnh báo kèm nút "Gửi lại mã".
+    const emailResult = await sendWithTimeout(
+      sendVerificationEmail(email, verificationCode, name)
+    );
+    if (emailResult.success) {
+      emailSent = true;
+    } else {
+      emailErrorMessage = emailResult.error || 'Không thể gửi email xác thực';
+      console.warn('⚠️ Không thể gửi email xác thực:', emailErrorMessage);
     }
     
     const userObj = user.toObject();

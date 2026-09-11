@@ -174,22 +174,37 @@ export function AuthProvider({
   const register = useCallback(
     async (name: string, email: string, password: string): Promise<AuthResult> => {
       try {
-        const data = await apiFetch('/api/auth/register', {
-          method: 'POST',
-          body: JSON.stringify({ name, email, password }),
-        });
+        // Timeout phía client 20s — server đã race 12s nên không bao giờ
+        // treo quá lâu; tránh UI "Đang xử lý…" vô hạn khi mạng/SMTP kẹt.
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 20_000);
+        try {
+          const data = await apiFetch('/api/auth/register', {
+            method: 'POST',
+            body: JSON.stringify({ name, email, password }),
+            signal: controller.signal,
+          });
 
-        if (data.userId) {
-          localStorage.setItem(PENDING_VERIFY_KEY, data.userId);
+          if (data.userId) {
+            localStorage.setItem(PENDING_VERIFY_KEY, data.userId);
+          }
+
+          return {
+            ok: true,
+            userId: data.user?.id || data.userId,
+            needsVerification: true,
+          };
+        } finally {
+          clearTimeout(timer);
         }
-
-        return {
-          ok: true,
-          userId: data.user?.id || data.userId,
-          needsVerification: true,
-        };
       } catch (error: any) {
         console.error('Register error:', error);
+        if (error?.name === 'AbortError') {
+          return {
+            ok: false,
+            error: 'Máy chủ phản hồi quá lâu (SMTP timeout). Tài khoản có thể đã được tạo — hãy thử đăng nhập hoặc đăng ký lại.',
+          };
+        }
         return {
           ok: false,
           error: error.message || 'Đăng ký thất bại. Vui lòng thử lại.',

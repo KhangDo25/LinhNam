@@ -7,15 +7,39 @@ if (!SMTP_USER || !SMTP_PASS) {
   console.warn('⚠️ Chưa cấu hình SMTP_USER và SMTP_PASS trong .env');
 }
 
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST || 'smtp.gmail.com',
-  port: Number(process.env.SMTP_PORT) || 587,
-  secure: false,
-  auth: {
-    user: SMTP_USER,
-    pass: SMTP_PASS,
-  },
-});
+// Lazy transporter — chỉ tạo khi cần, có timeout để không treo request.
+// Gmail STARTTLS (587) đôi khi bị ISP chặn; timeout giúp fail nhanh thay vì treo 30s+.
+function getTransporter() {
+  return nodemailer.createTransport({
+    host: process.env.SMTP_HOST || 'smtp.gmail.com',
+    port: Number(process.env.SMTP_PORT) || 587,
+    secure: false,
+    auth: {
+      user: SMTP_USER,
+      pass: SMTP_PASS,
+    },
+    connectionTimeout: 8_000,
+    greetingTimeout: 8_000,
+    socketTimeout: 10_000,
+    tls: {
+      // Không fail khi cert chain lạ trên mạng dev
+      rejectUnauthorized: false,
+    },
+  });
+}
+
+// Race gửi mail với timeout — tránh treo request khi SMTP bị chặn.
+// Trả kết quả timeout thay vì throw để caller xử lý như lỗi gửi thông thường.
+export async function sendWithTimeout(
+  send: Promise<{ success: boolean; error?: string }>,
+  timeoutMs = 12_000,
+  timeoutMessage = 'SMTP timeout sau 12 giây. Vui lòng bấm "Gửi lại mã".'
+): Promise<{ success: boolean; error?: string }> {
+  const timeout = new Promise<{ success: false; error: string }>((resolve) =>
+    setTimeout(() => resolve({ success: false, error: timeoutMessage }), timeoutMs)
+  );
+  return Promise.race([send, timeout]);
+}
 
 export async function sendVerificationEmail(
   email: string,
@@ -31,7 +55,7 @@ export async function sendVerificationEmail(
       };
     }
 
-    const info = await transporter.sendMail({
+    const info = await getTransporter().sendMail({
       from: `"LinhNam" <${SMTP_USER}>`,
       to: email,
       subject: '🔐 Xác thực tài khoản LinhNam',
@@ -116,7 +140,7 @@ export async function sendOrderConfirmationEmail(
       )
       .join('');
 
-    await transporter.sendMail({
+    await getTransporter().sendMail({
       from: `"LinhNam" <${SMTP_USER}>`,
       to: email,
       subject: '✅ Xác nhận đơn hàng LinhNam',
