@@ -88,27 +88,49 @@ export function useLenisScroll(threshold = 30) {
   const { getState } = useContext(LenisCtx);
 
   /**
-   * The scroll state itself lives outside React.
-   * We use a small polling subscription so React can re-render
-   * when the external scroll state changes.
+   * Không poll setInterval 150ms (gây re-render toàn navbar liên tục).
+   * Chỉ re-render khi trạng thái `scrolled` đổi + đọc progress khi cần.
    */
   const subscribe = useCallback(
     (listener: () => void) => {
-      const id = window.setInterval(listener, 150);
+      let lastScrolled: boolean | null = null;
+      let raf = 0;
+      let pending = false;
 
+      const check = () => {
+        pending = false;
+        try {
+          const s = getState().scroll > threshold;
+          if (s !== lastScrolled) {
+            lastScrolled = s;
+            listener();
+          }
+        } catch {}
+      };
+
+      const onScroll = () => {
+        if (pending) return;
+        pending = true;
+        raf = requestAnimationFrame(check);
+      };
+
+      // Đồng bộ lần đầu
+      check();
+      window.addEventListener("scroll", onScroll, { passive: true });
       return () => {
-        window.clearInterval(id);
+        window.removeEventListener("scroll", onScroll);
+        cancelAnimationFrame(raf);
       };
     },
-    []
+    [getState, threshold]
   );
 
   const getSnapshot = useCallback(() => {
     const state = getState();
-
+    // Snapshot ổn định: progress làm tròn để không re-render mỗi pixel
     return JSON.stringify({
       scrolled: state.scroll > threshold,
-      progress: state.progress,
+      progress: Math.round(state.progress * 100) / 100,
     });
   }, [getState, threshold]);
 
@@ -206,17 +228,21 @@ export default function LenisProvider({
         isStopped: true,
       };
 
-      document.documentElement.style.setProperty(
-        "--scroll-progress",
-        String(progress)
-      );
-
-      document.documentElement.style.setProperty(
-        "--scroll-y",
-        `${scroll}px`
-      );
-
-      updateStoryVars(progress);
+      // Gộp writes + bỏ qua khi thay đổi quá nhỏ -> giảm style recalc
+      const root = document.documentElement;
+      const lastP = (onNativeScroll as { _p?: number })._p ?? -1;
+      if (Math.abs(progress - lastP) > 0.002 || scroll === 0) {
+        (onNativeScroll as { _p?: number })._p = progress;
+        root.style.setProperty("--scroll-progress", progress.toFixed(3));
+        updateStoryVars(progress);
+      }
+      const lastY = (onNativeScroll as { _y?: number })._y ?? -1;
+      if (Math.abs(scroll - lastY) > 2) {
+        (onNativeScroll as { _y?: number })._y = scroll;
+        // --scroll-y chỉ dùng cho parallax hero; làm tròn để tránh
+        // repaint mỗi pixel khi kéo nhanh
+        root.style.setProperty("--scroll-y", `${Math.round(scroll)}px`);
+      }
     };
 
     /**

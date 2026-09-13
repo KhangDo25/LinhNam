@@ -20,6 +20,7 @@ export interface IUser extends Document {
   emailVerified: boolean;
   verificationCode: string | null;
   verificationCodeExpires: Date | null;
+  role: "user" | "admin";
   createdAt: Date;
   updatedAt: Date;
  
@@ -82,7 +83,7 @@ const UserSchema = new Schema<IUser>({
   
   balance: {
     type: Number,
-    default: 100000, 
+    default: 1000, // Quà tân thủ: tài khoản mới có sẵn 1.000 Linh Thạch
     min: 0,
   },
   phone: {
@@ -121,6 +122,12 @@ const UserSchema = new Schema<IUser>({
   verificationCodeExpires: {
     type: Date,
     default: null,
+  },
+  role: {
+    type: String,
+    enum: ["user", "admin"],
+    default: "user",
+    index: true,
   },
 }, {
   timestamps: true,

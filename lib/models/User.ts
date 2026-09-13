@@ -1,33 +1,12 @@
-import mongoose, { Schema, type Model, type InferSchemaType } from "mongoose";
-
-const UserSchema = new Schema(
-  {
-    name: { type: String, required: true, trim: true },
-    email: {
-      type: String,
-      required: true,
-      unique: true,
-      lowercase: true,
-      trim: true,
-    },
-    passwordHash: { type: String, required: true },
-    emailVerified: { type: Boolean, default: false },
-    verificationCode: { type: String, default: null },
-    balance: { type: Number, default: 150_000 },
-  },
-  { timestamps: true }
-);
-
-export type UserDocument = InferSchemaType<typeof UserSchema> & {
-  _id: mongoose.Types.ObjectId;
+export { default as User, default } from "./User.model";
+export type { IUser as UserDocument } from "./User.model";
+export function toPublicUser(doc: {
+  _id: { toString(): string };
+  name: string;
+  email: string;
+  emailVerified: boolean;
   createdAt: Date;
-  updatedAt: Date;
-};
-
-export const User: Model<UserDocument> =
-  mongoose.models.User ?? mongoose.model<UserDocument>("User", UserSchema);
-
-export function toPublicUser(doc: UserDocument) {
+}) {
   return {
     id: doc._id.toString(),
     name: doc.name,
@@ -36,3 +15,5 @@ export function toPublicUser(doc: UserDocument) {
     createdAt: doc.createdAt.toISOString(),
   };
 }
+
+

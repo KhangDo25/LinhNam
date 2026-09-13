@@ -1,110 +1,106 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import Link from 'next/link';
+import { useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import AuthFormShell from "@/components/auth/auth-form-shell";
+import Button from "@/components/ui/button";
+import { useAuth, getPendingVerifyUserId } from "@/components/providers/auth-provider";
 
 export default function LoginPage() {
   const router = useRouter();
+  const { login } = useAuth();
   const [formData, setFormData] = useState({
-    email: '',
-    password: ''
+    email: "",
+    password: "",
   });
-  const [error, setError] = useState('');
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
+    setError("");
     setLoading(true);
 
     try {
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(formData),
-      });
+      const result = await login(formData.email, formData.password);
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Đăng nhập thất bại');
+      if (!result.ok) {
+        if (result.needsVerification) {
+          const pendingId = result.userId || getPendingVerifyUserId();
+          if (pendingId) {
+            localStorage.setItem("linh-nam-pending-verify", pendingId);
+          }
+          router.push("/xac-thuc");
+          return;
+        }
+        setError(result.error || "Đăng nhập thất bại.");
+        return;
       }
 
-      localStorage.setItem('token', data.token);
-      localStorage.setItem('user', JSON.stringify(data.user));
-
-      router.push('/');
-      
-    } catch (err: any) {
-      setError(err.message);
+      router.push("/");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Đăng nhập thất bại.");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="max-w-md w-full space-y-8 p-8 bg-white rounded-lg shadow">
-        <div>
-          <h2 className="text-3xl font-bold text-center">Đăng nhập</h2>
-          <p className="mt-2 text-center text-gray-600">
-            Chào mừng trở lại với LinhNam
-          </p>
-        </div>
-
-        {error && (
-          <div className="bg-red-50 text-red-500 p-3 rounded-md text-sm">
-            {error}
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div>
-            <label className="block text-sm font-medium text-gray-700">
-              Email
-            </label>
-            <input
-              type="email"
-              required
-              value={formData.email}
-              onChange={(e) => setFormData({...formData, email: e.target.value})}
-              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="example@email.com"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700">
-              Mật khẩu
-            </label>
-            <input
-              type="password"
-              required
-              value={formData.password}
-              onChange={(e) => setFormData({...formData, password: e.target.value})}
-              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="••••••••"
-            />
-          </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
-          >
-            {loading ? 'Đang đăng nhập...' : 'Đăng nhập'}
-          </button>
-        </form>
-
-        <div className="text-center">
-          <Link href="/dang-ky" className="text-sm text-blue-600 hover:text-blue-500">
-            Chưa có tài khoản? Đăng ký ngay
+    <AuthFormShell
+      title="Đăng nhập"
+      subtitle="Chào mừng trở lại với LinhNam"
+      footer={
+        <>
+          Chưa có tài khoản?{" "}
+          <Link href="/dang-ky" className="text-gold hover:underline">
+            Đăng ký ngay
           </Link>
+        </>
+      }
+    >
+      {error && (
+        <div className="bg-crimson/10 text-crimson p-3 rounded-md text-sm border border-crimson/20 mb-6">
+          {error}
         </div>
-      </div>
-    </div>
+      )}
+
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <label className="block">
+          <span className="text-[10px] uppercase tracking-widest text-bone/60">Email</span>
+          <input
+            type="email"
+            required
+            autoComplete="email"
+            value={formData.email}
+            onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+            className="mt-2 w-full border border-gold/20 bg-mist/50 px-4 py-3 text-base text-bone focus:border-gold outline-none min-h-[48px]"
+            placeholder="example@email.com"
+          />
+        </label>
+
+        <label className="block">
+          <span className="text-[10px] uppercase tracking-widest text-bone/60">Mật khẩu</span>
+          <input
+            type="password"
+            required
+            autoComplete="current-password"
+            value={formData.password}
+            onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+            className="mt-2 w-full border border-gold/20 bg-mist/50 px-4 py-3 text-base text-bone focus:border-gold outline-none min-h-[48px]"
+            placeholder="••••••••"
+          />
+        </label>
+
+        <Button
+          type="submit"
+          variant="primary"
+          className="w-full min-h-[48px]"
+          disabled={loading}
+        >
+          {loading ? "Đang đăng nhập..." : "Đăng nhập"}
+        </Button>
+      </form>
+    </AuthFormShell>
   );
 }

@@ -16,7 +16,7 @@ export async function GET(req: Request) {
     }
 
     await connectDB();
-    const user = await User.findById(payload.userId);
+    const user = await User.findById(payload.userId).lean();
     if (!user) {
       return NextResponse.json({ ok: true, user: null, balance: 0 });
     }
@@ -28,6 +28,7 @@ export async function GET(req: Request) {
         name: user.name,
         email: user.email,
         emailVerified: user.emailVerified,
+        role: (user as { role?: string }).role ?? "user",
         createdAt: user.createdAt.toISOString(),
       },
       balance: user.balance,

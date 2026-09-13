@@ -15,22 +15,45 @@ export interface PerformanceFlags {
 }
 
 function detectProfile(): PerformanceProfile {
-  if (typeof window === "undefined") return "balanced";
+  if (typeof window === "undefined") return "minimal";
 
-  const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  if (reduced) return "minimal";
+  try {
+    // Tôn trọng người dùng yếu máy / tiết kiệm pin / giảm chuyển động
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return "minimal";
 
-  const isMobile = window.innerWidth < 768;
-  const coarse = window.matchMedia("(pointer: coarse)").matches;
-  const lowMemory =
-    "deviceMemory" in navigator &&
-    (navigator as Navigator & { deviceMemory?: number }).deviceMemory! <= 4;
-  const lowCpu =
-    "hardwareConcurrency" in navigator && navigator.hardwareConcurrency <= 4;
+    const isMobile = window.innerWidth < 768;
+    const coarse = window.matchMedia("(pointer: coarse)").matches;
+    if (isMobile || coarse) return "minimal";
 
-  if (isMobile || coarse) return "minimal";
-  if (lowMemory || lowCpu) return "balanced";
-  return "full";
+    const nav = navigator as Navigator & {
+      deviceMemory?: number;
+      hardwareConcurrency?: number;
+      connection?: { saveData?: boolean; effectiveType?: string };
+    };
+    if (nav.connection?.saveData) return "minimal";
+    if (
+      nav.connection?.effectiveType === "slow-2g" ||
+      nav.connection?.effectiveType === "2g"
+    )
+      return "minimal";
+    if (typeof nav.deviceMemory === "number" && nav.deviceMemory <= 4) return "minimal";
+    if (typeof nav.hardwareConcurrency === "number" && nav.hardwareConcurrency <= 4)
+      return "balanced";
+
+    // Mặc định balanced cho desktop để tránh lag — chỉ bật "full"
+    // khi máy thực sự khỏe (nhiều RAM + nhiều core).
+    if (
+      typeof nav.deviceMemory === "number" &&
+      typeof nav.hardwareConcurrency === "number" &&
+      nav.deviceMemory >= 8 &&
+      nav.hardwareConcurrency >= 8
+    ) {
+      return "full";
+    }
+    return "balanced";
+  } catch {
+    return "minimal";
+  }
 }
 
 export function getPerformanceFlags(): PerformanceFlags {
@@ -38,16 +61,20 @@ export function getPerformanceFlags(): PerformanceFlags {
 
   return {
     profile,
-    smoothScroll: profile === "full",
-    customCursor: profile === "full",
+    // TẮT smooth-scroll Lenis mặc định (nguồn lag chính: rAF liên tục +
+    // hijack scroll native). Chỉ bật ở máy rất khỏe.
+    smoothScroll: false,
+    customCursor: false,
     mouseLight: false,
+    // Canvas particles chỉ bật ở profile full, số lượng ít (xử lý trong component)
     canvasParticles: profile === "full",
-    fogAnimation: profile === "full",
-    portalParticles: profile === "full",
-    tiltCards: profile === "full",
-    heavyBlur: profile === "full",
-    pageTransitionBlur: profile === "full",
-    loadingScreen: profile !== "minimal",
+    fogAnimation: false,
+    portalParticles: false,
+    tiltCards: false,
+    heavyBlur: false,
+    pageTransitionBlur: false,
+    // Bỏ màn hình loading chặn 1.5–2s -> vào web ngay lập tức
+    loadingScreen: false,
   };
 }
 

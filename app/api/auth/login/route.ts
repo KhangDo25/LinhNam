@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import connectDB from "@/lib/mongodb";
+import mongoose from "mongoose";
 import User from "@/lib/models/User.model";
 import bcrypt from "bcryptjs";
 import { createSession } from "@/lib/auth-session";
@@ -22,12 +23,42 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Vui lòng nhập mật khẩu." }, { status: 400 });
     }
 
-    const user = await User.findOne({ email: email.toLowerCase() });
+    const normalizedEmail = email.toLowerCase();
+    const raw = (await mongoose.connection
+      .collection("users")
+      .findOne({ email: normalizedEmail })) as null | {
+      _id: { toString(): string };
+      password?: string;
+      passwordHash?: string;
+    };
+
+    if (!raw) {
+      return NextResponse.json(
+        { error: "Email hoặc mật khẩu không đúng" },
+        { status: 401 }
+      );
+    }
+
+    const hash: string | undefined = raw.password ?? raw.passwordHash;
+    if (!hash || typeof hash !== "string") {
+      console.error(
+        `[login] user ${normalizedEmail} thiếu hash mật khẩu (password & passwordHash đều undefined).`
+      );
+      return NextResponse.json(
+        { error: "Email hoặc mật khẩu không đúng" },
+        { status: 401 }
+      );
+    }
+
+    const user = await User.findOne({ email: normalizedEmail });
     if (!user) {
       return NextResponse.json(
         { error: "Email hoặc mật khẩu không đúng" },
         { status: 401 }
       );
+    }
+    if (!user.password && raw.passwordHash) {
+      user.password = raw.passwordHash;
     }
 
     if (user.isLocked?.()) {
@@ -42,13 +73,20 @@ export async function POST(req: Request) {
       );
     }
 
-    const isValid = await bcrypt.compare(password, user.password);
+    const isValid = await bcrypt.compare(password, hash);
     if (!isValid) {
-      user.loginAttempts += 1;
-      if (user.loginAttempts >= MAX_LOGIN_ATTEMPTS) {
-        user.lockUntil = new Date(Date.now() + LOCK_TIME);
-      }
-      await user.save();
+      const attempts = (user.loginAttempts ?? 0) + 1;
+      await User.updateOne(
+        { _id: user._id },
+        {
+          $set: {
+            loginAttempts: attempts,
+            ...(attempts >= MAX_LOGIN_ATTEMPTS
+              ? { lockUntil: new Date(Date.now() + LOCK_TIME) }
+              : {}),
+          },
+        }
+      );
       return NextResponse.json(
         { error: "Email hoặc mật khẩu không đúng" },
         { status: 401 }
@@ -69,11 +107,14 @@ export async function POST(req: Request) {
 
     user.loginAttempts = 0;
     user.lockUntil = null;
-    await user.save();
+    await user.save().catch(() => User.updateOne(
+      { _id: user._id },
+      { $set: { loginAttempts: 0, lockUntil: null } },
+    ));
 
     const token = createSession(user._id.toString());
 
-    return NextResponse.json({
+    const res = NextResponse.json({
       success: true,
       token,
       user: {
@@ -81,11 +122,21 @@ export async function POST(req: Request) {
         name: user.name,
         email: user.email,
         emailVerified: user.emailVerified,
+        role: (user as { role?: string }).role ?? "user",
         createdAt: user.createdAt.toISOString(),
       },
-      balance: user.balance,
+      balance: user.balance ?? 0,
       message: "Đăng nhập thành công",
     });
+    // Cookie cho proxy.ts (middleware) đọc — client vẫn dùng Bearer token.
+    res.cookies.set("session", token, {
+      httpOnly: true,
+      sameSite: "lax",
+      path: "/",
+      maxAge: 7 * 24 * 60 * 60,
+      secure: process.env.NODE_ENV === "production",
+    });
+    return res;
   } catch (error) {
     console.error("Login error:", error);
     return NextResponse.json(

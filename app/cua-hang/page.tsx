@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Coins, ShoppingCart } from "lucide-react";
 import Navbar from "@/components/layout/navbar";
@@ -9,10 +10,8 @@ import PageAtmosphere from "@/components/layout/page-atmosphere";
 import SectionTitle from "@/components/ui/section-title";
 import Card from "@/components/ui/card";
 import Tag from "@/components/ui/tag";
-import { shopItems } from "@/data/shop";
+import { shopItems, type ShopItem } from "@/data/shop";
 import { useAuth } from "@/components/providers/auth-provider";
-import PageIntroPanel from "@/components/content/page-intro-panel";
-import { shopFacts } from "@/data/site-facts";
 
 const rarityVariant = {
   common: "void" as const,
@@ -20,22 +19,103 @@ const rarityVariant = {
   legendary: "crimson" as const,
 };
 
+type CatalogItem = ShopItem & { stock: number };
+
+// Card memo để cuộn không re-render cả lưới 100 lần
+const ProductCard = memo(function ProductCard({
+  item,
+  canBuy,
+  loggedIn,
+  onBuy,
+}: {
+  item: CatalogItem;
+  canBuy: boolean;
+  loggedIn: boolean;
+  onBuy: (id: string, price: number) => void;
+}) {
+  return (
+    <Card className="p-6 group h-full flex flex-col border-gold/15">
+      <div className="relative aspect-square bg-mist/80 mb-5 overflow-hidden border border-gold/10">
+        <Image
+          src={item.image}
+          alt={item.name}
+          fill
+          loading="lazy"
+          className="object-contain p-8 opacity-70 group-hover:opacity-95 transition-opacity"
+          sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+        />
+      </div>
+      <Tag variant={rarityVariant[item.rarity]} className="mb-2 w-fit">
+        {item.type}
+      </Tag>
+      <h3 className="text-xl font-heading text-bone group-hover:text-gold transition-colors">
+        {item.name}
+      </h3>
+      <p className="text-xs text-bone/70 mt-2 flex-grow leading-relaxed">{item.desc}</p>
+      <p className="text-sm text-gold font-semibold mt-4 mb-1">{item.price}</p>
+      {item.stock >= 0 && (
+        <p className={`text-xs mb-3 ${item.stock === 0 ? "text-crimson" : "text-bone/50"}`}>
+          {item.stock === 0 ? "Hết hàng" : `Còn ${item.stock} cái`}
+        </p>
+      )}
+      {item.stock < 0 && <div className="mb-3" />}
+      <button
+        type="button"
+        disabled={!canBuy}
+        onClick={() => onBuy(item.id, item.priceValue)}
+        className="w-full py-3 bg-gold/10 hover:bg-gold hover:text-void transition-all text-[10px] uppercase tracking-widest font-bold disabled:opacity-30 disabled:pointer-events-none"
+      >
+        {item.priceValue === 0
+          ? "Huyền bí"
+          : item.stock === 0
+            ? "Hết hàng"
+            : loggedIn
+              ? "Thêm vào giỏ"
+              : "Đăng nhập để mua"}
+      </button>
+    </Card>
+  );
+});
+
 export default function CuaHangPage() {
   const router = useRouter();
   const { user, balance, addToCart, cartCount } = useAuth();
+  // Catalog thực tế (giá/kho do admin chỉnh) — fallback về data tĩnh khi API lỗi
+  const [catalog, setCatalog] = useState<CatalogItem[]>(
+    shopItems.map((i) => ({ ...i, stock: -1 }))
+  );
 
-  const handleBuy = (productId: string, priceValue: number) => {
-    if (!user) {
-      router.push("/dang-nhap");
-      return;
-    }
-    if (!user.emailVerified) {
-      router.push("/xac-thuc");
-      return;
-    }
-    if (priceValue === 0) return;
-    addToCart(productId, 1);
-  };
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/products")
+      .then((r) => r.json())
+      .then((d) => {
+        if (!cancelled && Array.isArray(d.products)) setCatalog(d.products);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleBuy = useCallback(
+    (productId: string, priceValue: number) => {
+      if (!user) {
+        router.push("/dang-nhap");
+        return;
+      }
+      if (!user.emailVerified) {
+        router.push("/xac-thuc");
+        return;
+      }
+      if (priceValue === 0) return;
+      addToCart(productId, 1);
+    },
+    [user, router, addToCart]
+  );
+
+  const loggedIn = !!user;
+  const tipCount = useMemo(() => `${catalog.length} vật phẩm biểu tượng văn hóa.`, [catalog.length]);
 
   return (
     <PageAtmosphere variant="void" className="text-gold pt-32">
@@ -64,15 +144,10 @@ export default function CuaHangPage() {
           </div>
         </div>
 
-        <PageIntroPanel
-          title={shopFacts.title}
-          body={shopFacts.body}
-          citations={shopFacts.citations}
-          tips={[
-            `${shopItems.length} vật phẩm biểu tượng văn hóa.`,
-            "Thanh toán bằng Linh Thạch ảo — không liên kết tiền thật.",
-          ]}
-        />
+        <div className="mb-10 border-b border-gold/10 pb-6 text-sm text-bone/60 leading-relaxed">
+          <p className="font-heading text-xl text-gold mb-2">Tàng bảo Linh Nam</p>
+          <p>Mua bảo vật bằng Linh Thạch — {tipCount} Thanh toán bằng Linh Thạch ảo.</p>
+        </div>
 
         {!user && (
           <Card className="p-6 mb-10 flex flex-col sm:flex-row items-center justify-between gap-4 border-gold/25" glow>
@@ -97,38 +172,14 @@ export default function CuaHangPage() {
         )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {shopItems.map((item) => (
-            <Card key={item.id} className="p-6 group h-full flex flex-col border-gold/15" glow>
-              <div className="relative aspect-square bg-mist/80 mb-5 overflow-hidden border border-gold/10">
-                <Image
-                  src={item.image}
-                  alt={item.name}
-                  fill
-                  className="object-contain p-8 opacity-70 group-hover:opacity-95 transition-opacity"
-                  sizes="300px"
-                />
-              </div>
-              <Tag variant={rarityVariant[item.rarity]} className="mb-2 w-fit">
-                {item.type}
-              </Tag>
-              <h3 className="text-xl font-heading text-bone group-hover:text-gold transition-colors">
-                {item.name}
-              </h3>
-              <p className="text-xs text-bone/70 mt-2 flex-grow leading-relaxed">{item.desc}</p>
-              <p className="text-sm text-gold font-semibold mt-4 mb-4">{item.price}</p>
-              <button
-                type="button"
-                disabled={item.priceValue === 0}
-                onClick={() => handleBuy(item.id, item.priceValue)}
-                className="w-full py-3 bg-gold/10 hover:bg-gold hover:text-void transition-all text-[10px] uppercase tracking-widest font-bold disabled:opacity-30 disabled:pointer-events-none"
-              >
-                {item.priceValue === 0
-                  ? "Huyền bí"
-                  : user
-                    ? "Thêm vào giỏ"
-                    : "Đăng nhập để mua"}
-              </button>
-            </Card>
+          {catalog.map((item) => (
+            <ProductCard
+              key={item.id}
+              item={item}
+              loggedIn={loggedIn}
+              canBuy={item.priceValue !== 0 && item.stock !== 0}
+              onBuy={handleBuy}
+            />
           ))}
         </div>
       </div>

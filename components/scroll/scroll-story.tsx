@@ -8,14 +8,24 @@ interface ScrollStoryProps {
   children: React.ReactNode;
 }
 
-/** Audio fade theo scroll — story vars đã xử lý trong LenisProvider */
+/** Audio fade theo scroll — story vars đã xử lý trong LenisProvider.
+ *  Tắt hẳn khi tab ẩn; dùng rAF-throttle thay cho setInterval cố định. */
 export default function ScrollStory({ children }: ScrollStoryProps) {
   const { setVolume, isPlaying, currentTrack } = useAmbientAudio();
   const lastVol = useRef(-1);
 
   useEffect(() => {
-    const updateVolume = throttle(() => {
-      if (!isPlaying || currentTrack !== "/audio/home-bg.mp3") return;
+    if (!isPlaying || currentTrack !== "/audio/home-bg.mp3") return;
+
+    let raf = 0;
+    let lastRun = 0;
+
+    const tick = () => {
+      raf = requestAnimationFrame(tick);
+      const now = performance.now();
+      if (now - lastRun < 500) return; // 2 lần/giây là đủ cho fade nhạc
+      if (document.visibilityState !== "visible") return;
+      lastRun = now;
       const p = parseFloat(
         getComputedStyle(document.documentElement).getPropertyValue(
           "--scroll-progress"
@@ -27,10 +37,10 @@ export default function ScrollStory({ children }: ScrollStoryProps) {
         lastVol.current = vol;
         setVolume(vol, 400);
       }
-    }, 200);
+    };
 
-    const id = setInterval(updateVolume, 250);
-    return () => clearInterval(id);
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
   }, [isPlaying, currentTrack, setVolume]);
 
   return <>{children}</>;

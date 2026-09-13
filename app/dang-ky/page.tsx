@@ -34,9 +34,6 @@ export default function DangKyPage() {
         setError(result.error ?? "Đăng ký thất bại.");
         return;
       }
-      if (result.demoCode) {
-        sessionStorage.setItem("linh-nam-demo-otp", result.demoCode);
-      }
       router.push("/xac-thuc");
     } finally {
       setSubmitting(false);
@@ -46,7 +43,7 @@ export default function DangKyPage() {
   return (
     <AuthFormShell
       title="Tạo tài khoản"
-      subtitle="Mật khẩu: tối thiểu 8 ký tự, có chữ hoa, chữ thường và số. Sau đăng ký cần xác thực email (OTP demo)."
+      subtitle="Mật khẩu: tối thiểu 8 ký tự, có chữ hoa, chữ thường và số. Sau đăng ký cần xác thực email."
       footer={
         <>
           Đã có tài khoản?{" "}

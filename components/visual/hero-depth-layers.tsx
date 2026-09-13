@@ -24,11 +24,13 @@ export default function HeroDepthLayers() {
     const ctx = canvas.getContext("2d", { alpha: true });
     if (!ctx) return;
 
-    const count = perf.profile === "full" ? 22 : 12;
+    // Canvas hạt bay: giảm số lượng + fps thấp để không ngốn CPU.
+    // Chỉ chạy khi tab visible VÀ hero còn trong viewport.
+    const count = 8;
     let rafId = 0;
     let lastFrame = 0;
 
-    const frameInterval = perf.profile === "full" ? 32 : 48;
+    const frameInterval = 100; // ~10fps là đủ cho hạt bay mờ
 
     type P = {
       x: number;
@@ -72,26 +74,35 @@ export default function HeroDepthLayers() {
 
     document.addEventListener("visibilitychange", onVisibility);
 
+    // Dừng vẽ khi hero đã cuộn khỏi màn hình (tiết kiệm pin/CPU)
+    let inView = true;
+    const io = new IntersectionObserver(
+      (entries) => {
+        inView = entries[0]?.isIntersecting ?? true;
+      },
+      { threshold: 0 }
+    );
+    io.observe(canvas);
+
+    // Cache CSS vars — đọc getComputedStyle mỗi frame rất đắt
     let storyP = 0;
     let mx = 0;
+    let cacheTick = 0;
 
     const draw = (time: number) => {
       rafId = requestAnimationFrame(draw);
 
-      if (!runningRef.current) return;
+      if (!runningRef.current || !inView) return;
       if (time - lastFrame < frameInterval) return;
 
       lastFrame = time;
 
-      const styles = getComputedStyle(document.documentElement);
-
-      storyP = parseFloat(
-        styles.getPropertyValue("--story-particles") || "0"
-      );
-
-      mx = parseFloat(
-        styles.getPropertyValue("--mouse-nx") || "0"
-      );
+      cacheTick++;
+      if (cacheTick % 10 === 0) {
+        const styles = getComputedStyle(document.documentElement);
+        storyP = parseFloat(styles.getPropertyValue("--story-particles") || "0");
+        mx = parseFloat(styles.getPropertyValue("--mouse-nx") || "0");
+      }
 
       if (storyP < 0.05 && time % 1200 < frameInterval) {
         return;
@@ -130,6 +141,7 @@ export default function HeroDepthLayers() {
       runningRef.current = false;
 
       cancelAnimationFrame(rafId);
+      io.disconnect();
 
       resizeObserver.disconnect();
 

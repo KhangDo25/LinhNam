@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import User from '@/lib/models/User.model';
-import { sendVerificationEmail } from '@/lib/email';
+import { sendVerificationEmail, sendWithTimeout } from '@/lib/email';
 
 export async function POST(req: Request) {
   try {
@@ -36,8 +36,13 @@ export async function POST(req: Request) {
     user.verificationCode = newCode;
     user.verificationCodeExpires = new Date(Date.now() + 15 * 60 * 1000);
     await user.save();
-    
-    const emailResult = await sendVerificationEmail(user.email, newCode, user.name);
+
+    // Timeout 12s để không treo request khi SMTP bị chặn
+    const emailResult = await sendWithTimeout(
+      sendVerificationEmail(user.email, newCode, user.name),
+      12_000,
+      'SMTP timeout sau 12 giây. Vui lòng thử lại.'
+    );
     
     if (!emailResult.success) {
       return NextResponse.json(

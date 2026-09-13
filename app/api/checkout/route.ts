@@ -4,7 +4,8 @@ import User from "@/lib/models/User.model";
 import Order from "@/lib/models/Order.model";
 import { verifySession } from "@/lib/auth-session";
 import { sendOrderConfirmationEmail } from "@/lib/email";
-import { shopItems } from "@/data/shop";
+import { getShopCatalog } from "@/app/api/products/route";
+import ProductOverride from "@/lib/models/ProductOverride.model";
 
 export async function POST(req: Request) {
   try {
@@ -40,6 +41,10 @@ export async function POST(req: Request) {
       );
     }
 
+    // Giá lấy từ catalog thực tế (đã gồm giá admin chỉnh), không tin giá client
+    const catalog = await getShopCatalog();
+    const catalogMap = new Map(catalog.map((p) => [p.id, p]));
+
     const orderLines: {
       productId: string;
       name: string;
@@ -49,18 +54,26 @@ export async function POST(req: Request) {
     let total = 0;
 
     for (const item of items) {
-      const product = shopItems.find((p) => p.id === item.productId);
-      if (!product || product.priceValue === 0) {
+      const product = catalogMap.get(item.productId);
+      const qty = Math.floor(item.quantity);
+      if (!product || product.priceValue === 0 || !qty || qty < 1 || qty > 99) {
         return NextResponse.json(
           { error: `Sản phẩm không hợp lệ: ${item.productId}` },
           { status: 400 }
         );
       }
-      const lineTotal = product.priceValue * item.quantity;
+      // Kiểm tra tồn kho do admin đặt (-1 = vô hạn)
+      if (product.stock >= 0 && product.stock < qty) {
+        return NextResponse.json(
+          { error: `${product.name} chỉ còn ${product.stock} cái.` },
+          { status: 400 }
+        );
+      }
+      const lineTotal = product.priceValue * qty;
       orderLines.push({
         productId: product.id,
         name: product.name,
-        quantity: item.quantity,
+        quantity: qty,
         price: product.priceValue,
       });
       total += lineTotal;
@@ -78,6 +91,14 @@ export async function POST(req: Request) {
     user.balance -= total;
     user.cart = [];
     await user.save();
+
+    // Trừ kho (chỉ với sản phẩm có giới hạn)
+    for (const line of orderLines) {
+      await ProductOverride.updateOne(
+        { productId: line.productId, stock: { $gte: 0 } },
+        { $inc: { stock: -line.quantity } }
+      );
+    }
 
     const order = await Order.create({
       userId: user._id,

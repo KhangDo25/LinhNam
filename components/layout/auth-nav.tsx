@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ShoppingCart, User, LogOut } from "lucide-react";
+import { ShoppingCart, User, LogOut, Coins } from "lucide-react";
 import { useAuth } from "@/components/providers/auth-provider";
 
 export default function AuthNav({ mobile = false }: { mobile?: boolean }) {
@@ -25,6 +25,22 @@ export default function AuthNav({ mobile = false }: { mobile?: boolean }) {
               <User size={20} />
               {user.name} — {balance.toLocaleString("vi-VN")} LT
             </Link>
+            <Link
+              href="/nap-tien"
+              className="flex items-center gap-3 text-sm py-3 mobile-touch text-center border border-gold/30 text-gold"
+            >
+              <Coins size={20} />
+              Nạp Linh Thạch
+            </Link>
+            {user.role === "admin" && (
+              <Link
+                href="/admin"
+                className="flex items-center gap-3 text-sm py-3 mobile-touch text-center border border-crimson/50 text-crimson"
+              >
+                <User size={20} />
+                Trang Quản Trị
+              </Link>
+            )}
             <button
               type="button"
               onClick={logout}
@@ -65,9 +81,25 @@ export default function AuthNav({ mobile = false }: { mobile?: boolean }) {
 
       {user ? (
         <>
-          <span className="text-[10px] text-gold/80 tracking-wider hidden lg:inline">
-            {balance.toLocaleString("vi-VN")} LT
-          </span>
+          <Link
+            href="/nap-tien"
+            className="flex items-center gap-1 text-[10px] tracking-wider text-gold/80 hover:text-gold mobile-touch"
+            title="Nạp Linh Thạch"
+          >
+            <Coins size={14} />
+            <span className="hidden lg:inline">
+              {balance.toLocaleString("vi-VN")} LT
+            </span>
+            <span className="lg:hidden">Nạp</span>
+          </Link>
+          {user.role === "admin" && (
+            <Link
+              href="/admin"
+              className="text-[10px] uppercase tracking-[0.15em] border border-crimson/50 px-2 py-1 text-crimson hover:bg-crimson/10 mobile-touch"
+            >
+              Admin
+            </Link>
+          )}
           <Link
             href="/tai-khoan"
             className="flex items-center gap-1 text-[10px] uppercase tracking-[0.15em] text-bone/70 hover:text-gold mobile-touch"

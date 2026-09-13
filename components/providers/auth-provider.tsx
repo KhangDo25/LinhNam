@@ -101,7 +101,8 @@ export function AuthProvider({
   children: React.ReactNode;
 }) {
   const [user, setUser] = useState<User | null>(null);
-  const [balance, setBalance] = useState(100_000);
+
+  const [balance, setBalance] = useState(0);
   const [cart, setCart] = useState<CartItem[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
@@ -174,22 +175,36 @@ export function AuthProvider({
   const register = useCallback(
     async (name: string, email: string, password: string): Promise<AuthResult> => {
       try {
-        const data = await apiFetch('/api/auth/register', {
-          method: 'POST',
-          body: JSON.stringify({ name, email, password }),
-        });
 
-        if (data.userId) {
-          localStorage.setItem(PENDING_VERIFY_KEY, data.userId);
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 20_000);
+        try {
+          const data = await apiFetch('/api/auth/register', {
+            method: 'POST',
+            body: JSON.stringify({ name, email, password }),
+            signal: controller.signal,
+          });
+
+          if (data.userId) {
+            localStorage.setItem(PENDING_VERIFY_KEY, data.userId);
+          }
+
+          return {
+            ok: true,
+            userId: data.user?.id || data.userId,
+            needsVerification: true,
+          };
+        } finally {
+          clearTimeout(timer);
         }
-
-        return {
-          ok: true,
-          userId: data.user?.id || data.userId,
-          needsVerification: true,
-        };
       } catch (error: any) {
         console.error('Register error:', error);
+        if (error?.name === 'AbortError') {
+          return {
+            ok: false,
+            error: 'Máy chủ phản hồi quá lâu (SMTP timeout). Tài khoản có thể đã được tạo — hãy thử đăng nhập hoặc đăng ký lại.',
+          };
+        }
         return {
           ok: false,
           error: error.message || 'Đăng ký thất bại. Vui lòng thử lại.',
@@ -233,8 +248,6 @@ export function AuthProvider({
         console.error('Login error:', error);
 
         recordFailedLogin();
-
-        // API login trả { needsVerification, userId } kèm 403 khi chưa xác thực
         const body = error?.data || {};
         if (body?.needsVerification) {
           return {
@@ -297,10 +310,15 @@ export function AuthProvider({
   );
 
   const logout = useCallback(async () => {
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' });
+    } catch {}
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     localStorage.removeItem(PENDING_VERIFY_KEY);
     setUser(null);
+    setBalance(0);
+    setOrders([]);
   }, []);
 
   const addToCart = useCallback((productId: string, qty = 1) => {
@@ -395,7 +413,6 @@ export function AuthProvider({
     [user, cart, clearCart, fetchOrders]
   );
 
-  // Tải orders khi đã đăng nhập
   useEffect(() => {
     if (user) fetchOrders();
     else setOrders([]);

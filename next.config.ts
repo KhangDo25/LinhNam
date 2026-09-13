@@ -7,6 +7,11 @@ const nextConfig: NextConfig = {
   images: {
     unoptimized: true,
   },
+  // Bớt JS gửi xuống client: framer-motion chỉ dùng cho animation trang trí,
+  // tách ra chunk riêng để các trang shop/tài khoản/admin load nhẹ.
+  experimental: {
+    optimizePackageImports: ['framer-motion', 'lucide-react', 'gsap'],
+  },
 };
 
 export default nextConfig;

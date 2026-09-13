@@ -14,6 +14,7 @@ const navItems = [
   { label: "Huyền Thoại", href: "/huyen-thoai" },
   { label: "Linh Thú", href: "/linh-thu" },
   { label: "Cửa hàng", href: "/cua-hang" },
+  { label: "Nạp tiền", href: "/nap-tien" },
   { label: "Giới Thiệu", href: "/gioi-thieu" },
 ];
 
