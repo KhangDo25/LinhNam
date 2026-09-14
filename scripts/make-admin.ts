@@ -3,6 +3,26 @@
 // Nếu chưa có -> tạo mới (verified sẵn) với 1.000 LT.
 import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
+import fs from "fs";
+import path from "path";
+
+// Nạp .env thủ công để chạy được bằng `npx tsx` mà không cần dotenv
+try {
+  const envPath = path.resolve(process.cwd(), ".env");
+  const raw = fs.readFileSync(envPath, "utf8");
+  for (const line of raw.split(/\r?\n/)) {
+    const m = line.match(/^\s*([^#=\s]+)\s*=\s*(.*)\s*$/);
+    if (m && !process.env[m[1]]) {
+      let v = m[2].trim();
+      if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
+        v = v.slice(1, -1);
+      }
+      process.env[m[1]] = v;
+    }
+  }
+} catch {
+  // bỏ qua, kiểm tra MONGODB_URI bên dưới sẽ báo lỗi
+}
 
 const MONGODB_URI = process.env.MONGODB_URI;
 const email = (process.argv[2] || "").toLowerCase().trim();
