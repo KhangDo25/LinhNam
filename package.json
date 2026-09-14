@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "export": "next build",
+    "deploy": "next build && gh-pages -d out -b gh-pages"
   },
   "dependencies": {
     "@studio-freight/lenis": "^1.0.42",
@@ -31,13 +33,13 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "tsx": "^4.19.0",
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
     "gh-pages": "^6.3.0",
     "prettier": "^3.8.3",
     "prettier-plugin-tailwindcss": "^0.8.0",
     "tailwindcss": "^4",
+    "tsx": "^4.19.0",
     "typescript": "^5"
   }
 }
