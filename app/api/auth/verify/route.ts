@@ -1,15 +1,25 @@
 import { NextResponse } from "next/server";
 import connectDB from "@/lib/mongodb";
+import mongoose from "mongoose";
 import User from "@/lib/models/User.model";
+import { authLimiter, rateLimitResponse } from "@/lib/rate-limit";
 
 export async function POST(req: Request) {
+  const rl = authLimiter.check(req);
+  if (!rl.success) return rateLimitResponse(rl.resetMs);
   try {
     await connectDB();
 
     const { userId, code } = await req.json();
 
-    if (!userId || !code) {
+    if (typeof userId !== "string" || !mongoose.Types.ObjectId.isValid(userId)) {
       return NextResponse.json({ error: "Thiếu thông tin xác thực" }, { status: 400 });
+    }
+    if (typeof code !== "string" || !/^\d{6}$/.test(code.trim())) {
+      return NextResponse.json(
+        { error: "Mã xác thực không đúng hoặc đã hết hạn." },
+        { status: 400 }
+      );
     }
 
     const user = await User.findById(userId);

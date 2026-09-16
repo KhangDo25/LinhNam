@@ -1,7 +1,21 @@
 import jwt from 'jsonwebtoken';
 import { cookies } from 'next/headers';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret-do-not-use-in-production';
+function getJwtSecret(): string {
+  // Hỗ trợ cả JWT_SECRET (chuẩn) và AUTH_SECRET (đang dùng trong .env hiện tại).
+  const secret = process.env.JWT_SECRET || process.env.AUTH_SECRET;
+  if (!secret) {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('Thiếu JWT_SECRET (hoặc AUTH_SECRET). Cấu hình biến môi trường trước khi deploy.');
+    }
+    console.warn('⚠️ Chưa cấu hình JWT_SECRET/AUTH_SECRET — dùng secret tạm, CHỈ cho dev.');
+    return 'dev-only-fallback-secret-do-not-use-in-production';
+  }
+  if (secret.length < 32) {
+    console.warn('⚠️ JWT secret ngắn hơn 32 ký tự — nên dùng chuỗi ngẫu nhiên dài hơn.');
+  }
+  return secret;
+}
 const SESSION_EXPIRY = '7d';
 
 export interface SessionPayload {
@@ -10,13 +24,13 @@ export interface SessionPayload {
 }
 
 export function createSession(userId: string): string {
-  return jwt.sign({ userId }, JWT_SECRET, { expiresIn: SESSION_EXPIRY });
+  return jwt.sign({ userId }, getJwtSecret(), { expiresIn: SESSION_EXPIRY });
 }
 
 export function verifySession(token: string): SessionPayload | null {
   try {
-    return jwt.verify(token, JWT_SECRET) as SessionPayload;
-  } catch (error) {
+    return jwt.verify(token, getJwtSecret()) as SessionPayload;
+  } catch {
     return null;
   }
 }

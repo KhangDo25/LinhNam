@@ -63,8 +63,19 @@ export async function PATCH(req: Request) {
     unlock?: boolean;
     newPassword?: string;
   };
-  if (!body.userId) {
+  if (typeof body.userId !== "string" || !/^[a-f\d]{24}$/i.test(body.userId)) {
     return NextResponse.json({ error: "Thiếu userId." }, { status: 400 });
+  }
+  if (body.balanceDelta !== undefined) {
+    // Chặn NaN/Infinity và delta quá lớn (tràn số / phá kinh tế LT).
+    if (
+      typeof body.balanceDelta !== "number" ||
+      !Number.isFinite(body.balanceDelta) ||
+      !Number.isInteger(Math.floor(body.balanceDelta)) ||
+      Math.abs(body.balanceDelta) > 100_000_000
+    ) {
+      return NextResponse.json({ error: "Số LT không hợp lệ." }, { status: 400 });
+    }
   }
   await connectDB();
   const target = await User.findById(body.userId);
@@ -73,6 +84,9 @@ export async function PATCH(req: Request) {
   }
 
   if (body.name !== undefined) {
+    if (typeof body.name !== "string") {
+      return NextResponse.json({ error: "Tên không hợp lệ." }, { status: 400 });
+    }
     const name = body.name.trim();
     if (name.length < 2 || name.length > 60) {
       return NextResponse.json({ error: "Tên không hợp lệ." }, { status: 400 });
@@ -90,17 +104,17 @@ export async function PATCH(req: Request) {
     target.role = body.role;
   }
   if (body.balanceDelta !== undefined) {
-    if (!Number.isFinite(body.balanceDelta)) {
-      return NextResponse.json({ error: "Số LT không hợp lệ." }, { status: 400 });
-    }
-    target.balance = Math.max(0, (target.balance ?? 0) + Math.floor(body.balanceDelta));
+    // Đã validate ở trên; cộng nguyên tử, kẹp >= 0 để không mất update song song.
+    const nextBalance = Math.max(0, (target.balance ?? 0) + Math.floor(body.balanceDelta));
+    await User.updateOne({ _id: target._id }, { $set: { balance: nextBalance } });
+    target.balance = nextBalance;
   }
   if (body.unlock) {
     target.loginAttempts = 0;
     target.lockUntil = null;
   }
   if (body.newPassword !== undefined && body.newPassword !== "") {
-    if (body.newPassword.length < 8) {
+    if (typeof body.newPassword !== "string" || body.newPassword.length < 8 || body.newPassword.length > 72) {
       return NextResponse.json({ error: "Mật khẩu mới tối thiểu 8 ký tự." }, { status: 400 });
     }
     target.password = await bcrypt.hash(body.newPassword, 10);
@@ -127,7 +141,7 @@ export async function DELETE(req: Request) {
 
   const { searchParams } = new URL(req.url);
   const userId = searchParams.get("userId");
-  if (!userId) {
+  if (!userId || !/^[a-f\d]{24}$/i.test(userId)) {
     return NextResponse.json({ error: "Thiếu userId." }, { status: 400 });
   }
   if (userId === admin._id.toString()) {

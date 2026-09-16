@@ -3,8 +3,11 @@ import connectDB from '@/lib/mongodb';
 import User from '@/lib/models/User.model';
 import { verifySession } from '@/lib/auth-session';
 import { requireAdmin } from '@/lib/admin-auth';
+import { apiLimiter, rateLimitResponse } from '@/lib/rate-limit';
 
 export async function POST(req: Request) {
+  const rl = apiLimiter.check(req);
+  if (!rl.success) return rateLimitResponse(rl.resetMs);
   try {
     await connectDB();
 
@@ -38,11 +41,15 @@ export async function POST(req: Request) {
       if (!target) {
         return NextResponse.json({ error: 'Email nhận tiền không tồn tại.' }, { status: 404 });
       }
-      target.balance = (target.balance ?? 0) + Math.floor(amount);
-      await target.save();
+      // $inc nguyên tử để 2 admin nạp đồng thời không mất mát số dư.
+      const updated = await User.findByIdAndUpdate(
+        target._id,
+        { $inc: { balance: Math.floor(amount) } },
+        { new: true }
+      );
       return NextResponse.json({
         success: true,
-        balance: target.balance,
+        balance: updated?.balance ?? target.balance,
         message: `Đã nạp ${Math.floor(amount).toLocaleString('vi-VN')} LT cho ${target.email} (bởi admin ${admin.email}).`,
       });
     }
@@ -56,17 +63,18 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Số tiền nạp tối đa là 100.000.000 Linh Thạch.' }, { status: 400 });
     }
 
-    const user = await User.findById(payload.userId);
-    if (!user) {
+    const updatedUser = await User.findByIdAndUpdate(
+      payload.userId,
+      { $inc: { balance: Math.floor(amount) } },
+      { new: true }
+    );
+    if (!updatedUser) {
       return NextResponse.json({ error: 'Tài khoản không tồn tại.' }, { status: 404 });
     }
 
-    user.balance += Math.floor(amount);
-    await user.save();
-
     return NextResponse.json({
       success: true,
-      balance: user.balance,
+      balance: updatedUser.balance,
       message: `Nạp thành công ${Math.floor(amount).toLocaleString('vi-VN')} Linh Thạch!`,
     });
   } catch (error) {

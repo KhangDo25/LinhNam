@@ -2,8 +2,11 @@ import { NextResponse } from 'next/server';
 import connectDB from '@/lib/mongodb';
 import User from '@/lib/models/User.model';
 import { sendVerificationEmail, sendWithTimeout } from '@/lib/email';
+import { authLimiter, rateLimitResponse } from '@/lib/rate-limit';
 
 export async function POST(req: Request) {
+  const rl = authLimiter.check(req);
+  if (!rl.success) return rateLimitResponse(rl.resetMs);
   try {
     await connectDB();
     

@@ -44,7 +44,7 @@ export default function TaiKhoanPage() {
             </Link>
           </div>
           <p className="text-xs text-bone/50 pt-2">
-            Tài khoản demo — dữ liệu lưu trên trình duyệt của bạn.
+            Tài khoản đã xác thực email — dữ liệu đơn hàng lưu trên máy chủ.
           </p>
         </Card>
         <div className="mt-6 flex flex-col gap-3">

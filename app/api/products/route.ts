@@ -3,6 +3,7 @@ import connectDB from '@/lib/mongodb';
 import { shopItems } from '@/data/shop';
 import ProductOverride from '@/lib/models/ProductOverride.model';
 import { requireAdmin } from '@/lib/admin-auth';
+import { apiLimiter, rateLimitResponse } from '@/lib/rate-limit';
 
 export type ProductDTO = (typeof shopItems)[number] & {
   stock: number;
@@ -56,6 +57,8 @@ export async function GET() {
 
 // Admin: upsert giá / tồn kho cho 1 sản phẩm trong shop
 export async function PUT(req: Request) {
+  const rl = apiLimiter.check(req);
+  if (!rl.success) return rateLimitResponse(rl.resetMs);
   const { error } = await requireAdmin(req);
   if (error) return error;
 
@@ -69,13 +72,13 @@ export async function PUT(req: Request) {
   }
   if (
     body.priceValue !== undefined &&
-    (!Number.isFinite(body.priceValue) || body.priceValue < 0)
+    (!Number.isFinite(body.priceValue) || body.priceValue < 0 || body.priceValue > 100_000_000)
   ) {
     return NextResponse.json({ error: 'Giá không hợp lệ.' }, { status: 400 });
   }
   if (
     body.stock !== undefined &&
-    (!Number.isInteger(body.stock) || body.stock < -1)
+    (!Number.isInteger(body.stock) || body.stock < -1 || body.stock > 1_000_000)
   ) {
     return NextResponse.json({ error: 'Số lượng không hợp lệ (-1 = vô hạn).' }, { status: 400 });
   }
@@ -105,12 +108,14 @@ export async function PUT(req: Request) {
 }
 
 export async function DELETE(req: Request) {
+  const rl = apiLimiter.check(req);
+  if (!rl.success) return rateLimitResponse(rl.resetMs);
   const { error } = await requireAdmin(req);
   if (error) return error;
 
   const { searchParams } = new URL(req.url);
   const productId = searchParams.get('productId');
-  if (!productId) {
+  if (!productId || !shopItems.some((p) => p.id === productId)) {
     return NextResponse.json({ error: 'Thiếu productId.' }, { status: 400 });
   }
   await connectDB();

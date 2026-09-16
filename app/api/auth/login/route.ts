@@ -5,11 +5,14 @@ import User from "@/lib/models/User.model";
 import bcrypt from "bcryptjs";
 import { createSession } from "@/lib/auth-session";
 import { validateEmail } from "@/lib/auth-validation";
+import { authLimiter, rateLimitResponse } from "@/lib/rate-limit";
 
 const MAX_LOGIN_ATTEMPTS = 5;
 const LOCK_TIME = 15 * 60 * 1000;
 
 export async function POST(req: Request) {
+  const rl = authLimiter.check(req);
+  if (!rl.success) return rateLimitResponse(rl.resetMs);
   try {
     await connectDB();
 
@@ -128,7 +131,7 @@ export async function POST(req: Request) {
       balance: user.balance ?? 0,
       message: "Đăng nhập thành công",
     });
-    // Cookie cho proxy.ts (middleware) đọc — client vẫn dùng Bearer token.
+    // Cookie cho proxy.ts đọc — client vẫn dùng Bearer token.
     res.cookies.set("session", token, {
       httpOnly: true,
       sameSite: "lax",

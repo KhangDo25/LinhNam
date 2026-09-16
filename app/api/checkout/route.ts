@@ -6,8 +6,11 @@ import { verifySession } from "@/lib/auth-session";
 import { sendOrderConfirmationEmail } from "@/lib/email";
 import { getShopCatalog } from "@/app/api/products/route";
 import ProductOverride from "@/lib/models/ProductOverride.model";
+import { apiLimiter, rateLimitResponse } from "@/lib/rate-limit";
 
 export async function POST(req: Request) {
+  const rl = apiLimiter.check(req);
+  if (!rl.success) return rateLimitResponse(rl.resetMs);
   try {
     await connectDB();
 
@@ -27,6 +30,21 @@ export async function POST(req: Request) {
 
     if (!items?.length) {
       return NextResponse.json({ error: "Giỏ hàng trống" }, { status: 400 });
+    }
+    if (!Array.isArray(items) || items.length > 50) {
+      return NextResponse.json({ error: "Giỏ hàng không hợp lệ." }, { status: 400 });
+    }
+    for (const item of items) {
+      if (
+        typeof item?.productId !== "string" ||
+        !/^[a-z0-9-]+$/i.test(item.productId) ||
+        item.productId.length > 64
+      ) {
+        return NextResponse.json(
+          { error: `Sản phẩm không hợp lệ: ${String(item?.productId ?? "").slice(0, 32)}` },
+          { status: 400 }
+        );
+      }
     }
 
     const user = await User.findById(payload.userId);
@@ -88,14 +106,24 @@ export async function POST(req: Request) {
       );
     }
 
-    user.balance -= total;
-    user.cart = [];
-    await user.save();
+    // Trừ tiền nguyên tử: 2 request song song không thể cùng trừ quá số dư.
+    const debited = await User.findOneAndUpdate(
+      { _id: user._id, balance: { $gte: total } },
+      { $set: { cart: [] }, $inc: { balance: -total } },
+      { new: true }
+    );
+    if (!debited) {
+      return NextResponse.json(
+        { error: "Số dư không đủ hoặc đơn vừa được xử lý. Vui lòng thử lại." },
+        { status: 400 }
+      );
+    }
+    user.balance = debited.balance;
 
-    // Trừ kho (chỉ với sản phẩm có giới hạn)
+    // Trừ kho nguyên tử (chỉ với sản phẩm có giới hạn, không cho về âm)
     for (const line of orderLines) {
       await ProductOverride.updateOne(
-        { productId: line.productId, stock: { $gte: 0 } },
+        { productId: line.productId, stock: { $gte: line.quantity } },
         { $inc: { stock: -line.quantity } }
       );
     }

@@ -58,13 +58,21 @@ export async function PATCH(req: Request) {
   if (error) return error;
 
   const body = (await req.json()) as { orderId?: string; status?: string };
-  const allowed = ['pending', 'paid', 'processing', 'shipped', 'delivered', 'cancelled'];
-  if (!body.orderId || !body.status || !allowed.includes(body.status)) {
+  const allowed = ['pending', 'paid', 'processing', 'shipped', 'delivered', 'cancelled'] as const;
+  if (
+    typeof body.orderId !== 'string' ||
+    !/^[a-f\d]{24}$/i.test(body.orderId) ||
+    typeof body.status !== 'string' ||
+    !(allowed as readonly string[]).includes(body.status)
+  ) {
     return NextResponse.json({ error: 'Dữ liệu không hợp lệ.' }, { status: 400 });
   }
   await connectDB();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const order = await Order.findByIdAndUpdate(body.orderId, { $set: { status: body.status as any } }, { new: true });
+  const order = await Order.findByIdAndUpdate(
+    body.orderId,
+    { $set: { status: body.status } },
+    { new: true }
+  );
   if (!order) {
     return NextResponse.json({ error: 'Đơn hàng không tồn tại.' }, { status: 404 });
   }

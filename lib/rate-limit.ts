@@ -5,8 +5,6 @@ interface RateLimitEntry {
   resetTime: number;
 }
 
-const store = new Map<string, RateLimitEntry>();
-
 export interface RateLimitOptions {
   intervalMs: number;
   maxRequests: number;
@@ -14,6 +12,9 @@ export interface RateLimitOptions {
 
 export function rateLimit(options: RateLimitOptions) {
   const { intervalMs, maxRequests } = options;
+  // Mỗi limiter có bucket riêng (trước đây dùng chung 1 Map cho mọi limiter
+  // nên request tới /api/products có thể làm nghẽn /api/auth/login).
+  const store = new Map<string, RateLimitEntry>();
 
   return {
     check(req: NextRequest | Request, identifier?: string): { success: boolean; remaining: number; resetMs: number } {

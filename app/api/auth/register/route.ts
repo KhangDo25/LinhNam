@@ -4,8 +4,11 @@ import User from '@/lib/models/User.model';
 import bcrypt from 'bcryptjs';
 import { validateEmail, validatePassword, validateName } from '@/lib/auth-validation';
 import { sendVerificationEmail, sendWithTimeout } from '@/lib/email';
+import { authLimiter, rateLimitResponse } from '@/lib/rate-limit';
 
 export async function POST(req: Request) {
+  const rl = authLimiter.check(req);
+  if (!rl.success) return rateLimitResponse(rl.resetMs);
   try {
     await connectDB();
     
@@ -71,6 +74,7 @@ export async function POST(req: Request) {
     }
     
     const userObj = user.toObject();
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { password: _, ...userWithoutPassword } = userObj;
     
     if (emailSent) {
