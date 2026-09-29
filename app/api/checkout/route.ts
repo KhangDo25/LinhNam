@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import mongoose from "mongoose";
 import connectDB from "@/lib/mongodb";
 import User from "@/lib/models/User.model";
 import Order from "@/lib/models/Order.model";
@@ -7,6 +8,19 @@ import { sendOrderConfirmationEmail } from "@/lib/email";
 import { getShopCatalog } from "@/app/api/products/route";
 import ProductOverride from "@/lib/models/ProductOverride.model";
 import { apiLimiter, rateLimitResponse } from "@/lib/rate-limit";
+
+/**
+ * Lỗi nghiệp vụ trong checkout: throw ra để withTransaction ROLLBACK toàn bộ
+ * (balance + stock + order + order history), rồi trả về message thân thiện.
+ */
+class CheckoutError extends Error {
+  readonly status: number;
+  constructor(message: string, status = 400) {
+    super(message);
+    this.name = "CheckoutError";
+    this.status = status;
+  }
+}
 
 export async function POST(req: Request) {
   const rl = apiLimiter.check(req);
@@ -106,45 +120,93 @@ export async function POST(req: Request) {
       );
     }
 
-    // Trừ tiền nguyên tử: 2 request song song không thể cùng trừ quá số dư.
-    const debited = await User.findOneAndUpdate(
-      { _id: user._id, balance: { $gte: total } },
-      { $set: { cart: [] }, $inc: { balance: -total } },
-      { new: true }
-    );
-    if (!debited) {
-      return NextResponse.json(
-        { error: "Số dư không đủ hoặc đơn vừa được xử lý. Vui lòng thử lại." },
-        { status: 400 }
-      );
+    // ===== TRANSACTION: mọi bước bên dưới cùng commit hoặc cùng rollback =====
+    // Nếu stock fail (hoặc bất kỳ bước nào fail) → ROLLBACK EVERYTHING:
+    // balance được hoàn, không tạo order, không tạo order history, trả lỗi.
+    const session = await mongoose.startSession();
+    let orderId = "";
+    let newBalance = user.balance;
+    try {
+      await session.withTransaction(async () => {
+        // 7. Trừ tiền nguyên tử: 2 request song song không thể cùng trừ quá số dư.
+        const debited = await User.findOneAndUpdate(
+          { _id: user._id, balance: { $gte: total } },
+          { $set: { cart: [] }, $inc: { balance: -total } },
+          { new: true, session }
+        );
+        if (!debited) {
+          throw new CheckoutError(
+            "Số dư không đủ hoặc đơn vừa được xử lý. Vui lòng thử lại."
+          );
+        }
+        newBalance = debited.balance;
+
+        // 8. Trừ kho nguyên tử CÓ ĐIỀU KIỆN (stock >= quantity) + KIỂM TRA KẾT QUẢ.
+        //    Không đọc-điều-kiện-rồi-ghi (không atomic): một câu update có điều kiện là 1 thao tác nguyên tử.
+        //    Nếu không trừ được stock → throw → ROLLBACK toàn bộ (hoàn balance, không tạo order/history).
+        for (const line of orderLines) {
+          const stockUpdate = await ProductOverride.updateOne(
+            { productId: line.productId, stock: { $gte: line.quantity } },
+            { $inc: { stock: -line.quantity } },
+            { session }
+          );
+          if (stockUpdate.matchedCount > 0) continue; // đã trừ thành công
+
+          // Không match → chỉ hợp lệ khi sản phẩm KHÔNG giới hạn
+          // (không có override, hoặc override.stock = -1 = vô hạn).
+          // Còn override có stock >= 0 mà không match → đã hết/không đủ → rollback.
+          const override = await ProductOverride.findOne(
+            { productId: line.productId },
+            null,
+            { session }
+          ).lean();
+          if (override && override.stock >= 0) {
+            throw new CheckoutError(
+              `${line.name} đã hết hàng hoặc không đủ số lượng. Vui lòng thử lại.`
+            );
+          }
+        }
+
+        // 9. Tạo order (trong transaction — rollback nếu các bước sau fail)
+        const created = await Order.create(
+          [
+            {
+              userId: user._id,
+              items: orderLines,
+              total,
+              status: "paid",
+              paymentMethod: "linh_thach",
+              paymentStatus: "paid",
+            },
+          ],
+          { session }
+        );
+        orderId = created[0]._id.toString();
+
+        // 10. Cập nhật order history nguyên tử (thay vì user.save() ghi đè doc cũ)
+        await User.updateOne(
+          { _id: user._id },
+          { $push: { orderHistory: created[0]._id } },
+          { session }
+        );
+      });
+    } catch (txnError) {
+      if (txnError instanceof CheckoutError) {
+        return NextResponse.json(
+          { error: txnError.message },
+          { status: txnError.status }
+        );
+      }
+      throw txnError;
+    } finally {
+      await session.endSession();
     }
-    user.balance = debited.balance;
-
-    // Trừ kho nguyên tử (chỉ với sản phẩm có giới hạn, không cho về âm)
-    for (const line of orderLines) {
-      await ProductOverride.updateOne(
-        { productId: line.productId, stock: { $gte: line.quantity } },
-        { $inc: { stock: -line.quantity } }
-      );
-    }
-
-    const order = await Order.create({
-      userId: user._id,
-      items: orderLines,
-      total,
-      status: "paid",
-      paymentMethod: "linh_thach",
-      paymentStatus: "paid",
-    });
-
-    user.orderHistory.push(order._id);
-    await user.save();
 
     try {
       await sendOrderConfirmationEmail(
         user.email,
         user.name,
-        order._id.toString(),
+        orderId,
         total,
         orderLines.map((l) => ({
           name: l.name,
@@ -158,8 +220,8 @@ export async function POST(req: Request) {
 
     return NextResponse.json({
       success: true,
-      orderId: order._id.toString(),
-      balance: user.balance,
+      orderId,
+      balance: newBalance,
       message: "Thanh toán thành công!",
     });
   } catch (error) {

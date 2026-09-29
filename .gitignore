@@ -24,6 +24,8 @@
 
 .vercel
 
+.tsupgrader/
+
 *.tsbuildinfo
 next-env.d.ts
 

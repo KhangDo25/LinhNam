@@ -133,26 +133,26 @@ const UserSchema = new Schema<IUser>({
   timestamps: true,
 });
 
-UserSchema.methods.isLocked = function (this: any): boolean {
+UserSchema.methods.isLocked = function (this: IUser): boolean {
   if (!this.lockUntil) return false;
   return this.lockUntil > new Date();
 };
 
-UserSchema.methods.isVerificationCodeValid = function (this: any, code: string): boolean {
+UserSchema.methods.isVerificationCodeValid = function (this: IUser, code: string): boolean {
   if (!this.verificationCode || !this.verificationCodeExpires) return false;
   if (this.verificationCode !== code) return false;
   if (this.verificationCodeExpires < new Date()) return false;
   return true;
 };
 
-UserSchema.methods.generateVerificationCode = function (this: any): string {
+UserSchema.methods.generateVerificationCode = function (this: IUser): string {
   const code = String(Math.floor(100000 + Math.random() * 900000));
   this.verificationCode = code;
   this.verificationCodeExpires = new Date(Date.now() + 15 * 60 * 1000); // 15 phút
   return code;
 };
 
-UserSchema.methods.clearVerificationCode = function (this: any): void {
+UserSchema.methods.clearVerificationCode = function (this: IUser): void {
   this.verificationCode = null;
   this.verificationCodeExpires = null;
 };

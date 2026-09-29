@@ -71,6 +71,36 @@ function parseOrders(value: unknown): Order[] {
   return Array.isArray(value) ? (value as Order[]) : [];
 }
 
+interface FetchError extends Error {
+  data?: {
+    error?: string;
+    needsVerification?: boolean;
+    userId?: string;
+    [key: string]: unknown;
+  };
+  status?: number;
+}
+
+interface RawId {
+  _id?: RawId;
+  toString(): string;
+}
+
+interface RawOrderItem {
+  id?: string;
+  productId?: string | RawId;
+  quantity: number;
+}
+
+interface RawOrder {
+  _id?: RawId;
+  id?: string;
+  userId?: string | RawId;
+  items?: RawOrderItem[];
+  total?: number;
+  createdAt?: string;
+}
+
 async function apiFetch(endpoint: string, options?: RequestInit) {
   const token = localStorage.getItem('token');
 
@@ -86,9 +116,10 @@ async function apiFetch(endpoint: string, options?: RequestInit) {
   const data = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    const err: any = new Error(data.error || `API Error: ${response.status}`);
-    err.data = data;
-    err.status = response.status;
+    const err = Object.assign(new Error(data.error || `API Error: ${response.status}`), {
+      data,
+      status: response.status,
+    });
     throw err;
   }
 
@@ -197,7 +228,8 @@ export function AuthProvider({
         } finally {
           clearTimeout(timer);
         }
-      } catch (error: any) {
+      } catch (rawError) {
+        const error = rawError as FetchError;
         console.error('Register error:', error);
         if (error?.name === 'AbortError') {
           return {
@@ -244,11 +276,12 @@ export function AuthProvider({
         if (typeof data.balance === 'number') setBalance(data.balance);
 
         return { ok: true };
-      } catch (error: any) {
+      } catch (rawError) {
+        const error = rawError as FetchError;
         console.error('Login error:', error);
 
         recordFailedLogin();
-        const body = error?.data || {};
+        const body: NonNullable<FetchError["data"]> = error?.data || {};
         if (body?.needsVerification) {
           return {
             ok: false,
@@ -278,7 +311,8 @@ export function AuthProvider({
         localStorage.removeItem(PENDING_VERIFY_KEY);
         if (typeof data.balance === 'number') setBalance(data.balance);
         return { ok: true };
-      } catch (error: any) {
+      } catch (rawError) {
+        const error = rawError as FetchError;
         console.error('Verify error:', error);
         return {
           ok: false,
@@ -298,7 +332,8 @@ export function AuthProvider({
         });
 
         return { ok: true };
-      } catch (error: any) {
+      } catch (rawError) {
+        const error = rawError as FetchError;
         console.error('Resend error:', error);
         return {
           ok: false,
@@ -362,17 +397,17 @@ export function AuthProvider({
   const fetchOrders = useCallback(async () => {
     try {
       const data = await apiFetch('/api/orders');
-      const list = parseOrders(data.orders).map((o: any) => ({
+      const list = parseOrders(data.orders).map((o: RawOrder) => ({
         id: o._id?.toString?.() || o.id,
         userId: typeof o.userId === 'object' ? o.userId?.toString?.() : (o.userId || ''),
-        items: o.items?.map?.((it: any) => ({
+        items: o.items?.map?.((it: RawOrderItem) => ({
           productId: typeof it.productId === 'object' ? it.productId?._id?.toString?.() || it.productId?.toString?.() : (it.productId || it.id || ''),
           quantity: it.quantity,
         })) || o.items || [],
         total: o.total,
         status: 'paid' as const,
         createdAt: o.createdAt,
-      }));
+      })) as Order[];
       setOrders(list);
     } catch (e) {
       console.warn('Fetch orders failed:', e);
@@ -405,7 +440,8 @@ export function AuthProvider({
         await fetchOrders();
 
         return { ok: true, orderId: data.orderId, items: orderedItems };
-      } catch (error: any) {
+      } catch (rawError) {
+        const error = rawError as FetchError;
         console.error('Checkout error:', error);
         return { ok: false, error: error.message || 'Thanh toán thất bại.' };
       }
@@ -426,7 +462,8 @@ export function AuthProvider({
       });
       if (typeof data.balance === 'number') setBalance(data.balance);
       return { ok: true as const, balance: data.balance, message: data.message };
-    } catch (error: any) {
+    } catch (rawError) {
+      const error = rawError as FetchError;
       return { ok: false as const, error: error.message || 'Nạp tiền thất bại.' };
     }
   }, []);
